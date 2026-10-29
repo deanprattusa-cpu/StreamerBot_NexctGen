@@ -5,7 +5,7 @@ using System.Text.Json.Nodes;
 namespace StreamerBot.Native.Core;
 
 public sealed record ChatMessage(string Id, string Author, string Text, string PublishedAt);
-public sealed class YouTubeClient(HttpClient http, string credentialFile)
+public sealed class YouTubeClient(HttpClient http, string credentialFile, string? expectedChannelId = null)
 {
     private string _access = "";
     private DateTimeOffset _expires;
@@ -41,7 +41,8 @@ public sealed class YouTubeClient(HttpClient http, string credentialFile)
         foreach (var item in root["items"]?.AsArray() ?? [])
         {
             if (item?["status"]?["lifeCycleStatus"]?.GetValue<string>() != "live") continue;
-            VideoId = item["id"]!.GetValue<string>();
+            if (!string.IsNullOrEmpty(expectedChannelId) && item?["snippet"]?["channelId"]?.GetValue<string>() != expectedChannelId) continue;
+            VideoId = item!["id"]!.GetValue<string>();
             _ownerChannel = item["snippet"]?["channelId"]?.GetValue<string>();
             var video = await GetAsync("videos?part=liveStreamingDetails&id=" + Uri.EscapeDataString(VideoId), token);
             ChatId = video["items"]?[0]?["liveStreamingDetails"]?["activeLiveChatId"]?.GetValue<string>();
@@ -69,6 +70,12 @@ public sealed class YouTubeClient(HttpClient http, string credentialFile)
         _initial = false;
         if (_seen.Count > 10000) _seen.Clear();
         return (output.ToArray(), Math.Clamp(root["pollingIntervalMillis"]?.GetValue<int>() ?? 5000, 1000, 60000));
+    }
+    public async Task<ChatMessage[]> HistoryAsync(CancellationToken token)
+    {
+        if (ChatId is null) return [];
+        var data = await GetAsync("liveChat/messages?part=snippet,authorDetails&maxResults=200&liveChatId=" + Uri.EscapeDataString(ChatId), token);
+        return (data["items"]?.AsArray() ?? []).Select(item => new ChatMessage(item?["id"]?.GetValue<string>() ?? "", item?["authorDetails"]?["displayName"]?.GetValue<string>() ?? "Viewer", item?["snippet"]?["displayMessage"]?.GetValue<string>() ?? "", item?["snippet"]?["publishedAt"]?.GetValue<string>() ?? "")).Where(m => m.Text.Length > 0).ToArray();
     }
     public async Task SendAsync(string text, CancellationToken token)
     {

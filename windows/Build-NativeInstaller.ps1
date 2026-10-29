@@ -23,7 +23,7 @@ try {
     Get-ChildItem $SmokeRoot | Format-Table Name,Length
     Get-Content (Join-Path $SmokeRoot 'stderr.txt') -ErrorAction SilentlyContinue
     Get-WinEvent -FilterHashtable @{ LogName='Application'; StartTime=(Get-Date).AddMinutes(-2) } -ErrorAction SilentlyContinue | Where-Object { $_.ProviderName -in @('Application Error','.NET Runtime','Windows Error Reporting') } | Select-Object TimeCreated, ProviderName, Message | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $SmokeRoot 'windows-events.json')
-    if ($Smoke.ExitCode -ne 0 -or -not (Test-Path (Join-Path $SmokeRoot 'smoke-ready.txt'))) { throw 'Native UI did not load and lay out successfully' }
+    if ($Smoke.ExitCode -ne 0 -or -not (Test-Path (Join-Path $SmokeRoot 'smoke-ready.txt')) -or -not (Test-Path (Join-Path $SmokeRoot 'original-workflows-ready.txt'))) { throw 'Native UI did not load and lay out successfully' }
     Write-Host 'Native WinUI startup / layout / shutdown smoke test passed.'
     @'
 # Build validation
@@ -46,7 +46,7 @@ See NATIVE-PARITY.md for incomplete original workflows. No user secrets or model
     New-Item -ItemType Directory -Path $InstalledSmoke -Force | Out-Null
     $InstalledProcess = Start-Process -FilePath (Join-Path $Installed 'StreamerBot.Native.exe') -ArgumentList @('--smoke-test', ('"' + $InstalledSmoke + '"')) -PassThru
     if (-not $InstalledProcess.WaitForExit(30000)) { $InstalledProcess.Kill(); throw 'Installed native app smoke test timed out' }
-    if ($InstalledProcess.ExitCode -ne 0 -or -not (Test-Path (Join-Path $InstalledSmoke 'smoke-ready.txt'))) { throw 'Installed native app did not start successfully' }
+    if ($InstalledProcess.ExitCode -ne 0 -or -not (Test-Path (Join-Path $InstalledSmoke 'smoke-ready.txt')) -or -not (Test-Path (Join-Path $InstalledSmoke 'original-workflows-ready.txt'))) { throw 'Installed native app did not start successfully' }
     $AddedFile = Join-Path $Installed 'user-added-test.txt'
     'Synthetic user-added file; uninstall must preserve it.' | Set-Content -LiteralPath $AddedFile
     $UninstallProcess = Start-Process -FilePath (Join-Path $Installed 'Uninstall.exe') -ArgumentList '/S' -PassThru -Wait

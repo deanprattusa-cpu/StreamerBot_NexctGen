@@ -35,7 +35,7 @@ internal sealed class MusicWindow : Window
     private int _index = -1;
     internal MusicWindow(Profile profile)
     {
-        _profile = profile; Title = "StreamerBot music"; AppWindow.Resize(new SizeInt32(620, 500));
+        _profile = profile; if (AppWindow.Presenter is OverlappedPresenter presenter) presenter.IsAlwaysOnTop = true; Title = "StreamerBot music"; AppWindow.Resize(new SizeInt32(620, 500));
         var panel = new StackPanel { Spacing = 12, Margin = new Thickness(20), RequestedTheme = ElementTheme.Dark };
         var controls = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10 };
         void Add(string label, Action action) { var b = new Button { Content = label }; b.Click += (_, _) => action(); controls.Children.Add(b); }
@@ -57,6 +57,7 @@ internal sealed class MusicWindow : Window
         Closed += (_, _) => _player.Dispose();
     }
     private void Play(int index) { if (_files.Count == 0) return; _index = (index + _files.Count) % _files.Count; _player.Source = MediaSource.CreateFromUri(new Uri(_files[_index])); _list.SelectedIndex = _index; _player.Play(); }
+    internal void Seek(int seconds) { var position = _player.PlaybackSession.Position + TimeSpan.FromSeconds(seconds); _player.PlaybackSession.Position = position < TimeSpan.Zero ? TimeSpan.Zero : position; }
     internal void Next(int direction) => Play(_index + direction);
     internal void Toggle() { if (_index < 0) Play(0); else if (_player.PlaybackSession.PlaybackState == MediaPlaybackState.Playing) _player.Pause(); else _player.Play(); }
 }

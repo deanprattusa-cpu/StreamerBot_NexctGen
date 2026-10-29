@@ -13,7 +13,7 @@ using Windows.Storage;
 
 namespace StreamerBot.Native;
 
-internal sealed class NativeWindow : Window
+internal sealed partial class NativeWindow : Window
 {
     private readonly Profile _profile;
     private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(90) };
@@ -32,10 +32,9 @@ internal sealed class NativeWindow : Window
     private readonly ComboBox _mode = new() { ItemsSource = new[] { "V+T", "V", "T" }, SelectedIndex = 0, Width = 95 };
     private readonly ComboBox _voices = new() { ItemsSource = Catalog.Voices, Width = 170 };
     private readonly TextBox _game = new() { Width = 260, PlaceholderText = "Game" };
-    private readonly ComboBox _persona = new() { ItemsSource = new[] { "Default (Casual)", "English", "Pinoy Gamer", "Custom" }, IsEditable = true, Width = 175 };
-    private readonly TextBox _channel = new() { PlaceholderText = "Channel name", Width = 160 };
+    private readonly ComboBox _persona = new() { ItemsSource = new[] { "Default (Casual)", "Friendly (Wholesome)", "Roasting (Toxic/Savage)", "Joker (Funny)", "Serious (Pro Gamer)", "Genius (Know-It-All)", "Pinoy (Taglish)", "Kid (Gen Alpha)" }, IsEditable = true, Width = 175 };
+    private readonly ComboBox _channel = new() { PlaceholderText = "Import .env or add channel", Width = 205 };
     private readonly TextBlock _status = new() { Text = "Ready", TextWrapping = TextWrapping.Wrap };
-    private readonly TabView _tabs = new() { IsAddTabButtonVisible = false, CanReorderTabs = false, VerticalAlignment = VerticalAlignment.Stretch };
     private readonly StackPanel _settingsRows = new() { Spacing = 14 };
     private readonly TextBox _search = new() { PlaceholderText = "Search every original setting…", Width = 300 };
     private readonly ComboBox _settingsGroup = new() { ItemsSource = new[] { "General", "AI", "Voice", "Hotkeys", "Music", "Overlays", "All" }, SelectedIndex = 0, Width = 150 };
@@ -58,33 +57,45 @@ internal sealed class NativeWindow : Window
         _voice = CreateVoiceWorker();
         _controller.Log += WriteLog;
         _controller.Chat += message => DispatcherQueue.TryEnqueue(() => AddChat(message));
-        _controller.Caption += text => DispatcherQueue.TryEnqueue(() => { _overlay?.SetCaption(text); });
+        _controller.Caption += text => DispatcherQueue.TryEnqueue(() => { _overlay?.SetCaption(text); AddChat(new ChatMessage(Guid.NewGuid().ToString("N"), _profile.Text("channel_name", "StreamerBot"), text, DateTime.Now.ToString("HH:mm:ss"))); });
         _controller.Speak += SpeakAsync;
         _controller.Review += ReviewAsync;
         _root.RequestedTheme = ElementTheme.Dark;
-        _root.Background = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 12, 15, 20));
+        _root.Background = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 25, 25, 25));
         _root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         _root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        _root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        _root.RowDefinitions.Add(new RowDefinition());
         _root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         _root.Children.Add(BuildMenu());
-        var toolbar = Row(new TextBlock { Text = "Channel", VerticalAlignment = VerticalAlignment.Center }, _channel, _persona, _game,
-            Button("START", async () => { SaveToolbar(); var path = _profile.Text("native_youtube_token_path"); _controller.Start(path.Length > 0 ? new YouTubeClient(_http, path) : null, false); }),
-            Button("SIMULATE", () => { SaveToolbar(); _controller.Start(null, true); return Task.CompletedTask; }), Button("STOP", StopAsync));
-        Grid.SetRow(toolbar, 1); _root.Children.Add(toolbar);
-        AddTab("Live chat", BuildChat()); AddTab("Settings", BuildSettings()); AddTab("Hotkeys", BuildHotkeys()); AddTab("Voice & devices", BuildVoice()); AddTab("Migration status", BuildStatus());
-        Grid.SetRow(_tabs, 2); _root.Children.Add(_tabs);
-        var footer = new Border { Padding = new Thickness(12, 6, 12, 6), Child = _status };
-        Grid.SetRow(footer, 3); _root.Children.Add(footer);
+        _root.Children.Add(BuildOriginalToolbar().AtRow(1));
+        _root.Children.Add(BuildOriginalMain().AtRow(2));
+        _root.Children.Add(new Border { Padding = new Thickness(12, 6, 12, 6), Child = _status }.AtRow(3));
         Content = _root;
+        _persona.SelectionChanged += (_, _) =>
+        {
+            if (_loadingToolbar || _persona.SelectedItem is not string persona) return;
+            _profile.Set("persona", persona);
+            var lower = persona.ToLowerInvariant();
+            var voices = lower.Contains("pinoy") ? ("en-PH-JamesNeural", "am_adam") : lower.Contains("kid") ? ("en-US-AnaNeural", "am_puck") : lower.Contains("roasting") || lower.Contains("serious") ? ("en-US-GuyNeural", "am_michael") : lower.Contains("genius") || lower.Contains("joker") ? ("en-US-ChristopherNeural", "am_fenrir") : ("en-US-SteffanNeural", "am_adam");
+            _profile.Set("edge_voice", voices.Item1); _profile.Set("kokoro_voice", voices.Item2);
+        };
+        _channel.SelectionChanged += (_, _) =>
+        {
+            if (!_loadingToolbar && _channel.SelectedItem is ChannelAccount channel) { OriginalEnvironment.Select(_profile, channel); _profile.Save(); }
+        };
         LoadToolbar();
-        _root.Loaded += (_, _) => { if (!Program.SmokeTest) ApplyHotkeys(); WriteLog("Native interface ready. Import your original profile through File → Load Config. See Migration status for incomplete features.");
+        var sessionStatus = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(500) };
+        sessionStatus.Tick += (_, _) => { _channel.IsEnabled = !_controller.Running; _game.IsEnabled = !_controller.Running; };
+        sessionStatus.Start();
+        Closed += (_, _) => sessionStatus.Stop();
+        _root.Loaded += (_, _) => { if (!Program.SmokeTest) ApplyHotkeys(); WriteLog("Native interface ready. Import your original .env and JSON config from File. Choose a channel before Start.");
             if (Program.SmokeTest)
             {
                 var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
                 timer.Tick += async (_, _) =>
                 {
                     timer.Stop();
+                    await SmokeOriginalWorkflowsAsync();
                     if (_root.ActualWidth > 0 && _root.ActualHeight > 0) File.WriteAllText(Path.Combine(Program.DataRoot, "smoke-ready.txt"), "Native WinUI window loaded and laid out.");
                     try
                     {
@@ -108,7 +119,8 @@ internal sealed class NativeWindow : Window
         {
             if (_closing) return;
             args.Cancel = true; _closing = true;
-            _lifetime.Cancel(); Interrupt(); _hotkeys?.Dispose();
+            _lifetime.Cancel(); Interrupt(); _reviewWindow?.Reject(); _hotkeys?.Dispose();
+            foreach (var window in _toolWindows.Values) window.Destroy();
             await _controller.DisposeAsync(); await _voice.DisposeAsync();
             _overlay?.Close(); _music?.Close(); _youtubeOverlay?.Close(); _avatarVideo?.Close();
             _recording?.Dispose(); _audio.Dispose(); _http.Dispose();
@@ -121,27 +133,45 @@ internal sealed class NativeWindow : Window
     private Button Button(string text, Func<Task> action) { var button = new Button { Content = text }; button.Click += (_, _) => Run(action); return button; }
     private void Run(Func<Task> action) => _ = ExecuteAsync(action);
     private async Task ExecuteAsync(Func<Task> action) { try { await action(); } catch (OperationCanceledException) { WriteLog("Operation stopped."); } catch (Exception e) { WriteLog(e.Message); await NoticeAsync(e.Message); } }
-    private void AddTab(string title, UIElement content) => _tabs.TabItems.Add(new TabViewItem { Header = title, IsClosable = false, Content = content });
-    private void SelectTab(int index) => _tabs.SelectedIndex = index;
+    private void SelectTab(int index)
+    {
+        switch (index)
+        {
+            case 0: ShowChatWindow(); break;
+            case 1: ShowTool("settings", "Settings", BuildSettings, 1000, 750); break;
+            case 2: ShowTool("hotkeys", "Keybind, Soundboard & Overrides Manager", BuildOriginalHotkeys, 1150, 850); break;
+            case 3: ShowTool("voice", "Voice & Devices", BuildVoice, 1000, 750); break;
+            case 4: ShowTool("migration", "Migration status", BuildStatus, 850, 650); break;
+        }
+    }
     private async Task NoticeAsync(string message)
     {
         if (_closing || _root.XamlRoot is null) return;
         try { await new ContentDialog { XamlRoot = _root.XamlRoot, Title = "StreamerBot", Content = new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap }, CloseButtonText = "OK" }.ShowAsync(); }
         catch (Exception e) when (e is System.Runtime.InteropServices.COMException or InvalidOperationException) { }
     }
-    private Task<string?> ReviewAsync(string text, CancellationToken token)
+    private Task<ReviewDecision?> ReviewAsync(ReviewRequest request, CancellationToken token)
     {
-        var completion = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
-        if (!DispatcherQueue.TryEnqueue(async () => { try { completion.TrySetResult(await ReviewOnUiAsync(text, token)); } catch (Exception e) { completion.TrySetException(e); } })) completion.TrySetCanceled();
+        var completion = new TaskCompletionSource<ReviewDecision?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!DispatcherQueue.TryEnqueue(async () => { try { completion.TrySetResult(await ReviewOnUiAsync(request, token)); } catch (OperationCanceledException) { completion.TrySetCanceled(token); } catch (Exception e) { completion.TrySetException(e); } })) completion.TrySetCanceled();
         return completion.Task;
     }
-    private async Task<string?> ReviewOnUiAsync(string text, CancellationToken token)
+    private readonly SemaphoreSlim _reviewGate = new(1);
+    private async Task<ReviewDecision?> ReviewOnUiAsync(ReviewRequest request, CancellationToken token)
     {
-        token.ThrowIfCancellationRequested();
-        var editor = new TextBox { Text = text, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 150 };
-        var dialog = new ContentDialog { XamlRoot = _root.XamlRoot, Title = "Review reply", Content = editor, PrimaryButtonText = "Send / speak", CloseButtonText = "Discard" };
-        using var cancel = token.Register(() => DispatcherQueue.TryEnqueue(dialog.Hide));
-        return await dialog.ShowAsync() == ContentDialogResult.Primary ? editor.Text : null;
+        await _reviewGate.WaitAsync(token);
+        try
+        {
+            token.ThrowIfCancellationRequested();
+            var review = new ReviewWindow(_profile, request, (draft, cancel) => _ai.CompleteAsync(_profile, $"Rewrite this draft as a direct reply to {request.Context}. Draft: {draft}. Return only the revised reply.", cancel));
+            _reviewWindow = review;
+            using var cancel = token.Register(() => DispatcherQueue.TryEnqueue(review.Reject));
+            review.Window.Show();
+            var result = await review.Completion;
+            token.ThrowIfCancellationRequested();
+            return result;
+        }
+        finally { _reviewWindow = null; _reviewGate.Release(); }
     }
     private MenuBar BuildMenu()
     {
@@ -152,7 +182,7 @@ internal sealed class NativeWindow : Window
         { var item = new ToggleMenuFlyoutItem { Text = text, IsChecked = _profile.Flag(key, fallback) }; item.Click += (_, _) => { _profile.Set(key, item.IsChecked); _profile.Save(); }; menu.Items.Add(item); }
         var file = Menu("File");
         Command(file, "Load Config…", ImportProfileAsync); Command(file, "Save Config", () => { SaveToolbar(); _profile.Save(); WriteLog("Profile saved."); return Task.CompletedTask; });
-        Command(file, "Save Config As…", ExportProfileAsync); Command(file, "Import .env…", ImportEnvironmentAsync); Command(file, "Import YouTube token…", ImportTokenAsync); Command(file, "Save session log…", ExportLogAsync);
+        Command(file, "Save Config As…", ExportProfileAsync); Command(file, "All settings…", () => { SelectTab(1); return Task.CompletedTask; }); Command(file, "Import .env…", ImportEnvironmentAsync); Command(file, "Import YouTube token…", ImportTokenAsync); Command(file, "Save session log…", ExportLogAsync);
         Command(file, "Open data folder", () => { Process.Start(new ProcessStartInfo(Program.DataRoot) { UseShellExecute = true }); return Task.CompletedTask; });
         Command(file, "Exit", () => { Close(); return Task.CompletedTask; });
         var ai = Menu("AI Backend");
@@ -168,21 +198,13 @@ internal sealed class NativeWindow : Window
         Command(tools, "Enable / disable avatar video rendering", ToggleVideoAsync);
         Command(tools, "Keybinds & Hotkeys", () => { SelectTab(2); return Task.CompletedTask; }); Command(tools, "Chat list / manual reply", () => { SelectTab(0); return Task.CompletedTask; });
         Command(tools, "Game guide / live context", GuideAsync); Command(tools, "Live statistics", StatsAsync); Command(tools, "Batch voice cache builder", BatchCacheAsync);
-        Command(tools, "Standalone YouTube overlay", ShowYouTubeAsync); Command(tools, "Caption / avatar overlay", ShowOverlayAsync); Command(tools, "Music player", ShowMusicAsync);
+        Command(tools, "Standalone YouTube overlay", ShowYouTubeAsync); Command(tools, "Caption / avatar overlay", ShowOverlayAsync); Command(tools, "Music player", ShowMusicAsync); Command(tools, "Migration status", () => { SelectTab(4); return Task.CompletedTask; });
         var audio = Menu("Audio");
         Command(audio, "Voice presets / devices", () => { SelectTab(3); return Task.CompletedTask; });
         Command(audio, "Test TTS voice", () => SpeakAsync("Hello! Your stream voice is ready to test.", "test", _lifetime.Token)); Command(audio, "Record / transcribe microphone", RecordAsync);
         Command(audio, "Install / repair voice engines", () => PrepareVoicesAsync(false)); Command(audio, "Repair CUDA voice runtime", () => PrepareVoicesAsync(true)); Command(audio, "GPU diagnostics", GpuAsync);
         Command(audio, "Typecast login", () => VoiceLoginAsync("typecast")); Command(audio, "ElevenLabs Ghost login", () => VoiceLoginAsync("elevenlabs_ghost"));
         return bar;
-    }
-    private UIElement BuildChat()
-    {
-        var grid = new Grid { Margin = new Thickness(14) };
-        grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }); grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(170) });
-        grid.Children.Add(_chat);
-        var composer = Column(_manual, Row(_mode, Button("Generate AI reply", () => _controller.GenerateAsync(_manual.Text, token: _lifetime.Token)), Button("Speak / send text", () => _controller.DeliverAsync(_manual.Text, "manual", _lifetime.Token, _mode.SelectedItem?.ToString())), Button("Reply to selected", async () => { if (_chat.SelectedIndex is >= 0 && _chat.SelectedIndex < _messages.Count) { var m = _messages[_chat.SelectedIndex]; await _controller.GenerateAsync($"Reply to {m.Author}: {m.Text}", token: _lifetime.Token); } }), Button("Stop audio", () => { Interrupt(); return Task.CompletedTask; }), Button("Clear chat", () => { _chat.Items.Clear(); _messages.Clear(); return Task.CompletedTask; })));
-        Grid.SetRow(composer, 1); grid.Children.Add(composer); Grid.SetRow(_log, 2); grid.Children.Add(_log); return grid;
     }
     private UIElement BuildSettings()
     {
@@ -211,6 +233,8 @@ internal sealed class NativeWindow : Window
             { var toggle = new ToggleSwitch { IsOn = flag }; toggle.Toggled += (_, _) => _profile.Set(key, toggle.IsOn); row.Children.Add(toggle); }
             else if (current is JsonValue number && number.TryGetValue<double>(out var numeric))
             { var box = new NumberBox { Value = numeric, SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact }; box.ValueChanged += (_, _) => { if (double.IsFinite(box.Value)) _profile.Set(key, box.Value); }; row.Children.Add(box); }
+            else if (key == OriginalEnvironment.ValuesKey || key == "native_channel_tokens")
+            { row.Children.Add(new TextBlock { Text = "Imported account data is retained privately. Use File → Import .env or Credentials to update it.", TextWrapping = TextWrapping.Wrap }); }
             else if (key.Contains("_keys") || key.Contains("token") || key.EndsWith("api_key"))
             {
                 var password = new PasswordBox { Password = current is JsonArray ? string.Join("\n", _profile.Keys(key)) : current?.GetValue<string>() ?? "", PlaceholderText = "Keys stay in your local profile" };
@@ -224,22 +248,6 @@ internal sealed class NativeWindow : Window
             }
             _settingsRows.Children.Add(row);
         }
-    }
-    private UIElement BuildHotkeys()
-    {
-        var select = new ComboBox { ItemsSource = Catalog.SmartKeys.Concat(Catalog.SystemKeys).Distinct().ToArray(), Width = 280 };
-        var binding = new TextBox { Header = "Binding (example: ctrl+shift+1)" };
-        var mode = new ComboBox { Header = "Output", ItemsSource = new[] { "V+T", "V", "T" }, Width = 150 };
-        var custom = new TextBox { Header = "Override text / reaction phrases separated by |", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap };
-        var prompt = new TextBox { Header = "AI prompt", AcceptsReturn = true, TextWrapping = TextWrapping.Wrap };
-        var audio = new TextBox { Header = "Soundboard audio path" };
-        var shortText = new CheckBox { Content = "Short reply" }; var useAudio = new CheckBox { Content = "Play soundboard audio" }; var muteAi = new CheckBox { Content = "Mute AI for this key" };
-        var enabled = new ToggleSwitch { Header = "Global hotkeys", IsOn = _profile.Flag("hotkeys_active", true) };
-        enabled.Toggled += (_, _) => { _profile.Set("hotkeys_active", enabled.IsOn); ApplyHotkeys(); };
-        select.SelectionChanged += (_, _) => { var key = select.SelectedItem?.ToString() ?? ""; binding.Text = _profile.Text(key); mode.SelectedItem = _profile.Text(key + "_mode", "V+T"); custom.Text = _profile.Text(key + "_custom"); prompt.Text = _profile.Text(key + "_prompt"); audio.Text = _profile.Text(key + "_audio"); shortText.IsChecked = _profile.Flag(key + "_short"); useAudio.IsChecked = _profile.Flag(key + "_audio_enabled"); muteAi.IsChecked = _profile.Flag(key + "_mute_ai"); };
-        var save = Button("Apply binding and options", () => { var key = select.SelectedItem?.ToString() ?? throw new InvalidOperationException("Select a hotkey."); if (binding.Text.Length > 0 && !KeyChord.TryParse(binding.Text, out _)) throw new InvalidOperationException("This binding syntax is not supported yet. Your previous binding has been retained."); _profile.Set(key, binding.Text); _profile.Set(key + "_mode", mode.SelectedItem?.ToString() ?? "V+T"); _profile.Set(key + "_custom", custom.Text); _profile.Set(key + "_prompt", prompt.Text); _profile.Set(key + "_audio", audio.Text); _profile.Set(key + "_short", shortText.IsChecked == true); _profile.Set(key + "_audio_enabled", useAudio.IsChecked == true); _profile.Set(key + "_mute_ai", muteAi.IsChecked == true); _profile.Save(); ApplyHotkeys(); return Task.CompletedTask; });
-        select.SelectedIndex = 0;
-        return new ScrollViewer { Content = Column(enabled, select, binding, mode, shortText, custom, prompt, Row(audio, Button("Browse audio…", async () => { var file = await PickAsync(".wav", ".mp3"); if (file is not null) audio.Text = file.Path; })), useAudio, muteAi, save, new TextBlock { Text = "All original hotkey fields are retained. Basic Windows modifier chords are registered globally. Duplicate, reserved and unsupported combinations are reported rather than silently changed. Shortcuts suspend while typing in this app.", TextWrapping = TextWrapping.Wrap }) };
     }
     private UIElement BuildVoice()
     {
@@ -270,10 +278,23 @@ internal sealed class NativeWindow : Window
     {
         _messages.Add(message); _chat.Items.Add(new TextBlock { Text = message.Author + ": " + message.Text, TextWrapping = TextWrapping.Wrap });
         if (_messages.Count > 1000) { _messages.RemoveAt(0); _chat.Items.RemoveAt(0); }
-        _chat.ScrollIntoView(_chat.Items.Last());
+        _chat.ScrollIntoView(_chat.Items.Last()); RefreshChatList();
     }
-    private void SaveToolbar() { _profile.Set("game_name", _game.Text); _profile.Set("persona", _persona.Text); _profile.Set("channel_name", _channel.Text); }
-    private void LoadToolbar() { _game.Text = _profile.Text("game_name"); _persona.SelectedItem = _profile.Text("persona", "Default (Casual)"); _persona.Text = _profile.Text("persona", "Default (Casual)"); _channel.Text = _profile.Text("channel_name"); _voices.SelectedItem = _profile.Text("tts_mode", "edge"); RenderSettings(); }
+    private void SaveToolbar() { _profile.Set("game_name", _game.Text); _profile.Set("persona", _persona.Text); if (_channel.SelectedItem is ChannelAccount channel) OriginalEnvironment.Select(_profile, channel); }
+    private void LoadToolbar()
+    {
+        _loadingToolbar = true;
+        try
+        {
+            _game.Text = _profile.Text("game_name"); _persona.SelectedItem = _profile.Text("persona", "Default (Casual)"); _persona.Text = _profile.Text("persona", "Default (Casual)");
+            var channels = OriginalEnvironment.Channels(_profile); var selected = OriginalEnvironment.Selected(_profile);
+            _channel.ItemsSource = channels; _channel.SelectedItem = channels.FirstOrDefault(c => c.Number == selected?.Number);
+            if (_channel.SelectedItem is ChannelAccount channel) OriginalEnvironment.Select(_profile, channel);
+            _voices.SelectedItem = _profile.Text("tts_mode", "edge"); _mainVolume.Value = _profile.Number("volume", 1); _mainOpacity.Value = _profile.Number("overlay_opacity", 0.85);
+            RenderSettings();
+        }
+        finally { _loadingToolbar = false; }
+    }
     private void ApplyHotkeys()
     {
         _hotkeys?.Dispose(); _hotkeys = null;
@@ -284,7 +305,7 @@ internal sealed class NativeWindow : Window
     private async Task HandleHotkeyAsync(string key)
     {
         if (key == "hk_suspend_hotkeys") { _suspended = !_suspended; WriteLog(_suspended ? "Shortcuts suspended." : "Shortcuts resumed."); return; }
-        if (_suspended) return;
+        if (_suspended || FloatingWindow.IsEditing(this, _root) || _toolWindows.Values.Any(w => w.IsShown && FloatingWindow.IsEditing(w, w.Root))) return;
         SaveToolbar();
         if (Catalog.SmartKeys.Contains(key))
         {
@@ -295,30 +316,34 @@ internal sealed class NativeWindow : Window
         switch (key)
         {
             case "hk_stop": case "hk_stop_audio": Interrupt(); break;
-            case "hk_start": _controller.Start(new YouTubeClient(_http, _profile.Text("native_youtube_token_path")), false); break;
+            case "hk_start": await StartSessionAsync(false); break;
             case "hk_mic": case "hk_voice_input": await RecordAsync(); break;
             case "hk_mp3_play_pause": _music?.Toggle(); break;
             case "hk_mp3_next": _music?.Next(1); break;
             case "hk_mp3_prev": _music?.Next(-1); break;
-            case "hk_play_overlay": await ShowOverlayAsync(); break;
+            case "hk_mp3_forward": _music?.Seek(10); break;
+            case "hk_mp3_rewind": _music?.Seek(-10); break;
+            case "hk_strict_mode": _profile.Set("strict_repetition_mode", !_profile.Flag("strict_repetition_mode")); _profile.Save(); WriteLog("Anti-repeat: " + _profile.Flag("strict_repetition_mode")); break;
+            case "hk_sys_status": ShowSystemStatus(); break;
+            case "hk_play_overlay": await ShowYouTubeAsync(); break;
             case "hk_guide": case "hk_open_context_window": await GuideAsync(); break;
             case "hk_stats": await StatsAsync(); break;
-            case "hk_open_list": SelectTab(0); Activate(); break;
-            case "hk_hotkeys_window": SelectTab(2); Activate(); break;
+            case "hk_open_list": ShowChatWindow(toggle: true); break;
+            case "hk_hotkeys_window": SelectTab(2); break;
             case "hk_music_window": await ShowMusicAsync(); break;
             case "hk_toggle_ai_mute": _profile.Set("global_ai_mute", !_profile.Flag("global_ai_mute")); WriteLog("AI mute: " + _profile.Flag("global_ai_mute")); break;
             case "hk_toggle_cache_mode": _profile.Set("force_cache_only", !_profile.Flag("force_cache_only")); WriteLog("Cache only: " + _profile.Flag("force_cache_only")); break;
             case "hk_reply_last": if (_messages.Count > 0) await _controller.GenerateAsync("Reply to " + _messages[^1].Author + ": " + _messages[^1].Text, token: _lifetime.Token); break;
-            case "hk_hide_overlays": _overlay?.Close(); _music?.Close(); _youtubeOverlay?.Close(); break;
-            case "hk_manual_reply": SelectTab(0); Activate(); _manual.Focus(FocusState.Programmatic); break;
+            case "hk_hide_overlays": _overlay?.Close(); _music?.Close(); _youtubeOverlay?.Close(); foreach (var window in _toolWindows.Values) window.Hide(); break;
+            case "hk_manual_reply": ShowChatWindow(); _manual.Focus(FocusState.Programmatic); break;
             default: WriteLog(key + ": original system action has not been migrated yet. Its saved binding is retained."); break;
         }
     }
-    private void Interrupt() { var previous = _playback; _playback = new CancellationTokenSource(); previous.Cancel(); previous.Dispose(); _controller.Interrupt(); _voice.Interrupt(); _audio.Stop(); _avatarVideo?.Stop(); }
+    private void Interrupt() { _reviewWindow?.Reject(); var previous = _playback; _playback = new CancellationTokenSource(); previous.Cancel(); previous.Dispose(); _controller.Interrupt(); _voice.Interrupt(); _audio.Stop(); _avatarVideo?.Stop(); }
     private async Task StopAsync() { Interrupt(); await _controller.StopAsync(); }
     private async Task<StorageFile?> PickAsync(params string[] extensions)
     {
-        var picker = new FileOpenPicker(); WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
+        var picker = new FileOpenPicker(); var owner = _toolWindows.Values.FirstOrDefault(FloatingWindow.IsForeground) as Window ?? this; WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(owner));
         foreach (var extension in extensions) picker.FileTypeFilter.Add(extension);
         return await picker.PickSingleFileAsync();
     }
@@ -330,25 +355,30 @@ internal sealed class NativeWindow : Window
     private async Task ImportProfileAsync()
     {
         var file = await PickAsync(".json"); if (file is null) return;
-        await StopAsync(); _profile.Import(file.Path); _profile.Save(); await ReloadVoiceAsync(); LoadToolbar(); ApplyHotkeys(); WriteLog("Imported profile copy. Original file was not changed.");
+        await StopAsync();
+        OriginalEnvironment.ImportProfile(_profile, file.Path);
+        _profile.Save(); await ReloadVoiceAsync(); LoadToolbar(); RefreshHotkeyEditors(); ApplyHotkeys(); WriteLog("Imported profile copy. Original file was not changed.");
     }
     private async Task ExportProfileAsync() { SaveToolbar(); var file = await SaveFileAsync("StreamerBot-profile", ".json"); if (file is not null) _profile.Export(file.Path); }
     private async Task ImportEnvironmentAsync()
     {
         var file = await PickAsync("*"); if (file is null) return;
-        var mapping = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase) { ["GROQ_API_KEY"] = "groq_keys", ["GEMINI_API_KEY"] = "gemini_keys", ["GOOGLE_API_KEY"] = "gemini_keys", ["OPENROUTER_API_KEY"] = "openrouter_keys", ["SAMBANOVA_API_KEY"] = "sambanova_keys", ["ELEVENLABS_API_KEY"] = "elevenlabs_keys" };
-        var count = 0;
-        foreach (var raw in await File.ReadAllLinesAsync(file.Path)) { var line = raw.Trim(); if (line.StartsWith('#')) continue; var at = line.IndexOf('='); if (at <= 0) continue; var name = line[..at].Trim(); if (mapping.TryGetValue(name, out var key)) { var value = line[(at + 1)..].Trim().Trim('"', '\''); _profile.Set(key, new JsonArray(JsonValue.Create(value))); count++; } }
-        _profile.Save(); RenderSettings(); WriteLog($"Imported {count} supported credential entries. Other .env fields were not imported; use the profile settings for those.");
+        await StopAsync();
+        var count = OriginalEnvironment.Import(_profile, file.Path);
+        LoadToolbar(); _profile.Save(); await ReloadVoiceAsync();
+        WriteLog($"Imported {count} environment entries and {OriginalEnvironment.Channels(_profile).Length} channels. Original file was not changed. Select a channel; existing credentials beside the .env are detected by token prefix.");
     }
     private async Task ImportTokenAsync()
     {
         var file = await PickAsync(".json"); if (file is null) return;
         var document = JsonNode.Parse(await File.ReadAllTextAsync(file.Path))?.AsObject() ?? throw new InvalidDataException("Invalid token JSON.");
-        foreach (var key in new[] { "client_id", "client_secret", "refresh_token" }) if (string.IsNullOrWhiteSpace(document[key]?.GetValue<string>())) throw new InvalidDataException("Select the original authorized-user token file containing " + key + ".");
-        var directory = Path.Combine(Program.DataRoot, "Credentials"); Directory.CreateDirectory(directory); var target = Path.Combine(directory, "youtube.json");
+        foreach (var key in new[] { "client_id", "client_secret", "refresh_token" }) if (string.IsNullOrWhiteSpace(document[key]?.GetValue<string>())) throw new InvalidDataException("Select the original authorized-user token file containing " + key + ". Client-secret files need account authorization first.");
+        var channel = OriginalEnvironment.Selected(_profile);
+        var directory = Path.Combine(Program.DataRoot, "Credentials"); Directory.CreateDirectory(directory); var target = Path.Combine(directory, channel is null ? "youtube.json" : $"channel-{channel.Number}.json");
+        await StopAsync();
         if (!Path.GetFullPath(file.Path).Equals(target, StringComparison.OrdinalIgnoreCase)) File.Copy(file.Path, target, true);
-        _profile.Set("native_youtube_token_path", target); _profile.Save(); WriteLog("YouTube token copied to your private application data.");
+        if (channel is null) _profile.Set("native_youtube_token_path", target); else OriginalEnvironment.SetToken(_profile, channel, target);
+        _profile.Save(); WriteLog("YouTube token copied for " + (channel?.Name ?? "the legacy account") + ".");
     }
     private async Task ExportLogAsync() { var file = await SaveFileAsync("StreamerBot-session", ".txt"); if (file is not null) await File.WriteAllTextAsync(file.Path, _log.Text); }
     private readonly SemaphoreSlim _speechGate = new(1);
@@ -439,8 +469,14 @@ internal sealed class NativeWindow : Window
     }
     private async Task GpuAsync() { var result = await _voice.CallAsync("gpu", new JsonObject(), _lifetime.Token); await NoticeAsync(result["gpu"]?.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) ?? "No GPU report returned."); }
     private async Task VoiceLoginAsync(string engine) { await _voice.CallAsync("login", new JsonObject { ["engine"] = engine }, _lifetime.Token); WriteLog("Voice login browser closed. Test synthesis to verify login."); }
-    private async Task RecordAsync()
+    private readonly SemaphoreSlim _recordGate = new(1);
+    private Task RecordAsync() => SetRecordingAsync(null);
+    private async Task SetRecordingAsync(bool? desired)
     {
+        await _recordGate.WaitAsync(_lifetime.Token);
+        try
+        {
+        if (desired == (_recording is not null)) return;
         if (_recording is null)
         {
             var capture = new MediaCapture();
@@ -460,6 +496,8 @@ internal sealed class NativeWindow : Window
             var result = await _voice.CallAsync("transcribe", new JsonObject { ["audio"] = _recordedFile!.Path, ["engine"] = _profile.Text("stt_mode", "google") }, _lifetime.Token);
             _manual.Text = result["text"]?.GetValue<string>() ?? ""; SelectTab(0); WriteLog("Transcript ready for editing; it has not been sent.");
         }
+        }
+        finally { _recordGate.Release(); }
     }
     private Task ShowOverlayAsync() { if (_overlay is null) { _overlay = new OverlayWindow(_profile); _overlay.Closed += (_, _) => _overlay = null; } _overlay.Activate(); return Task.CompletedTask; }
     private Task ShowMusicAsync() { if (_music is null) { _music = new MusicWindow(_profile); _music.Closed += (_, _) => _music = null; } _music.Activate(); return Task.CompletedTask; }
@@ -471,8 +509,8 @@ internal sealed class NativeWindow : Window
     }
     private async Task StatsAsync()
     {
-        var path = _profile.Text("native_youtube_token_path"); if (path.Length == 0) throw new InvalidOperationException("Import your YouTube authorized-user token first.");
-        var client = new YouTubeClient(_http, path); if (!await client.FindLiveAsync(_lifetime.Token)) throw new InvalidOperationException("No active live broadcast.");
+        var path = OriginalEnvironment.TokenFile(_profile); if (path.Length == 0) throw new InvalidOperationException("Import your YouTube authorized-user token first.");
+        var client = new YouTubeClient(_http, path, OriginalEnvironment.Selected(_profile)?.ChannelId); if (!await client.FindLiveAsync(_lifetime.Token)) throw new InvalidOperationException("No active live broadcast.");
         await NoticeAsync((await client.StatisticsAsync(_lifetime.Token)).ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
     }
     private async Task BatchCacheAsync()

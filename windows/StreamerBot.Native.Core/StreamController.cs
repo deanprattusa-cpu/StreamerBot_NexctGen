@@ -2,6 +2,9 @@ using System.Text.RegularExpressions;
 
 namespace StreamerBot.Native.Core;
 
+public sealed record ReviewRequest(string Text, string Context, string Mode);
+public sealed record ReviewDecision(string Text, string Mode);
+
 public sealed class StreamController(Profile profile, AiClient ai) : IAsyncDisposable
 {
     private readonly SemaphoreSlim _reply = new(1);
@@ -12,13 +15,14 @@ public sealed class StreamController(Profile profile, AiClient ai) : IAsyncDispo
     private DateTimeOffset _lastReply;
     private readonly HashSet<string> _viewers = [];
     private int _generation;
+    private readonly System.Collections.Concurrent.ConcurrentQueue<string> _recentReplies = new();
     public bool Running { get; private set; }
     public bool Simulation { get; private set; }
     public event Action<string>? Log;
     public event Action<ChatMessage>? Chat;
     public event Action<string>? Caption;
     public event Func<string, string, CancellationToken, Task>? Speak;
-    public event Func<string, CancellationToken, Task<string?>>? Review;
+    public event Func<ReviewRequest, CancellationToken, Task<ReviewDecision?>>? Review;
     public void Start(YouTubeClient? youtube, bool simulation)
     {
         if (Running) return;
@@ -71,24 +75,28 @@ public sealed class StreamController(Profile profile, AiClient ai) : IAsyncDispo
         var generation = Volatile.Read(ref _generation);
         try
         {
+            var context = prompt;
+            if (profile.Flag("strict_repetition_mode") && _recentReplies.Count > 0) prompt += "\nDo not repeat any of these previous replies: " + string.Join(" | ", _recentReplies);
             var text = await ai.CompleteAsync(profile, prompt, linked.Token, image);
             linked.Token.ThrowIfCancellationRequested();
             if (generation != Volatile.Read(ref _generation)) return;
-            await DeliverAsync(text, category, linked.Token);
+            await DeliverAsync(text, category, linked.Token, context: context);
         }
         finally { _reply.Release(); }
     }
-    public async Task DeliverAsync(string text, string category, CancellationToken token = default, string? mode = null, bool silent = false)
+    public async Task DeliverAsync(string text, string category, CancellationToken token = default, string? mode = null, bool silent = false, string context = "Manual reply")
     {
         if (string.IsNullOrWhiteSpace(text)) return;
+        if (!silent && profile.Flag("global_ai_mute")) { Log?.Invoke("Global AI mute: chat and voice output suppressed."); return; }
+        mode ??= category.StartsWith("hk_") ? profile.Text(category + "_mode", "V+T") : profile.Text("auto_reply_output_mode", "V+T");
         if (profile.Flag("review_mode") && Review is not null && !silent)
         {
-            var approved = await Review(text, token);
-            if (string.IsNullOrWhiteSpace(approved)) return;
-            text = approved;
+            var approved = await Review(new ReviewRequest(text, context, mode), token);
+            if (approved is null || string.IsNullOrWhiteSpace(approved.Text)) return;
+            text = approved.Text; mode = approved.Mode;
         }
-        mode ??= category.StartsWith("hk_") ? profile.Text(category + "_mode", "V+T") : profile.Text("auto_reply_output_mode", "V+T");
-        if (!silent) { Caption?.Invoke(text); Log?.Invoke("AI: " + text); }
+        token.ThrowIfCancellationRequested();
+        if (!silent) { _recentReplies.Enqueue(text); while (_recentReplies.Count > 10) _recentReplies.TryDequeue(out _); Caption?.Invoke(text); Log?.Invoke("AI: " + text); }
         if (!silent && mode.Contains('T') && Running && !Simulation && _youtube is not null)
         {
             var clean = Regex.Replace(text, @"\[.*?\]|\*.*?\*|\(.*?\)", "").Trim();
@@ -110,6 +118,7 @@ public sealed class StreamController(Profile profile, AiClient ai) : IAsyncDispo
         if (profile.Flag("custom_length_enabled")) prompt += $" Use at most {profile.Number("custom_length_val", 30)} words.";
         await GenerateAsync(prompt, key, token: token);
     }
+    public Task<ChatMessage[]> ChatHistoryAsync(CancellationToken token) => _youtube is null ? Task.FromResult(Array.Empty<ChatMessage>()) : _youtube.HistoryAsync(token);
     public async Task StopAsync()
     {
         Interlocked.Increment(ref _generation); _session.Cancel();

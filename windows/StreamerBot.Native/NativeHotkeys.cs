@@ -44,8 +44,8 @@ internal sealed class NativeHotkeys : IDisposable
                 if (message.Id == 0x0312 && message.WParam > 0 && message.WParam <= (nuint)_bindings.Length)
                 {
                     GetWindowThreadProcessId(GetForegroundWindow(), out var foreground);
-                    // Preserve automatic shortcut suspension while typing in the app.
-                    if (foreground != (uint)Environment.ProcessId || _bindings[(int)message.WParam - 1].Name == "hk_suspend_hotkeys") _pressed(_bindings[(int)message.WParam - 1].Name);
+                    // The UI owner checks focus on editable controls, including detached windows.
+                    _pressed(_bindings[(int)message.WParam - 1].Name);
                 }
         }
         finally { foreach (var id in registered) UnregisterHotKey(0, id); _ready.Set(); }

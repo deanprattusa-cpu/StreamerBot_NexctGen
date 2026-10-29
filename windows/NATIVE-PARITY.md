@@ -1,4 +1,4 @@
-# StreamerBot Native 0.2 — migration preview
+# StreamerBot Native 0.3 — migration preview
 
 This is a new C#/.NET 10 and WinUI 3 Windows desktop application. The main UI,
 settings editor, global hotkeys, AI requests, session logic and YouTube REST
@@ -12,7 +12,7 @@ YouTube player embeds WebView2; the main application does not use WebView2.
 Run StreamerBot-Native-Setup.exe on Windows 11 x64. Installation is per user and
 requires no administrator account. .NET and Windows App SDK are bundled. No
 Python installation is needed for the native interface or Windows offline voice.
-Open Voice & devices, select `offline`, and click Test voice first.
+Open Audio → Voice presets / devices, select `offline`, and click Test voice first.
 
 Application files: `%LOCALAPPDATA%\Programs\StreamerBotNative`.
 Default profiles, private voice runtime, models and caches: `%LOCALAPPDATA%\StreamerBotNative`.
@@ -31,8 +31,48 @@ Profiles contain API credentials: keep exports private.
 For cloud AI, import your profile or enter your own keys and model names in Settings.
 For YouTube, File → Import YouTube token accepts the original authorized-user JSON
 with client_id, client_secret and refresh_token. The account needs an active live
-broadcast. New-account OAuth authorization UI is not implemented yet. Simulate
+broadcast. Credentials → Import Google JSON / Authorize channel accepts the original Google Desktop app client-secret JSON and opens account consent in the system browser. It uses a local loopback callback and PKCE; real account authorization still needs user testing. Simulate
 never posts messages. Provider availability, quotas and model access are external.
+
+## Original UI and channel workflow restored in 0.3
+
+The main screen uses the original menu/toolbar, live chat feed and green system
+log arrangement. Channel is a dropdown again, with Add and Credentials controls.
+Import the original `.env` through File → Import .env, then import your JSON
+config through File → Load Config. Either order retains channel/environment data.
+`CHANNEL_n_NAME`, `CHANNEL_n_ID` and `CHANNEL_n_TOKEN_PREFIX` are imported;
+nonconsecutive channel numbers and the original zero-based `channel_index` work.
+Unknown environment fields and multiple provider keys are retained in the private
+native profile. Original input files are not rewritten.
+
+Select a channel before Start. Authorized tokens named `<prefix>_token_N.json`
+in `credentials` beside the imported `.env` are discovered for that channel.
+Alternatively import its authorized token or authorize its Google Desktop client
+through Credentials. An explicitly assigned token belongs to that channel only.
+Live-broadcast lookup filters by the selected channel ID. Channel/game selection
+is locked during a session; stop before switching. Original account quota-driven
+credential rotation still needs migration.
+
+Tools → Keybinds & Hotkeys opens a separate topmost native window, with General,
+AI & Output, Chat Keys, Hype, Custom, Reactions, System, YouTube and Music groups.
+System/YouTube/Music bindings use two columns. Save Changes & Re-Bind persists
+bindings and closes the window. The original `hk_hotkeys_window` opens it too.
+
+Tools → Chat List / Manual Reply opens a separate topmost chat selector. It has
+message selection/editing, Hide Bots, Voice Only, Refresh, Reply, Improve, recording,
+hold-to-talk, a draft editor and Send. Its borderless header drags the window; the corner grip resizes it. Enter sends; Shift+Enter inserts a newline. `hk_open_list`
+toggles this window. Hotkeys suspend while editing text, as in the original.
+
+Review mode opens a topmost AI Reply Review window with viewer context, editable
+text, SEND (V+T), SEND (V), SEND (T), REVISE and REJECT. Closing rejects the reply.
+The selected output mode and edited text reach the delivery pipeline; cancellation
+closes the pending review. Review/chat geometry is saved in the original
+`geo_review`/`geo_selector` fields. Other tool windows retain their geometry too.
+
+This is a restoration of the reported workflows, not certification of 100% parity.
+Actual microphone capture and borderless window dragging still need interactive
+Windows verification. Some keybind General/AI settings remain in the all-settings editor.
+See the remaining behavior list below before replacing the working original app.
 
 ## Voice and CUDA preparation
 
@@ -91,7 +131,7 @@ lip sync.
 - Native profile load/save/export, searchable settings and retained unknown fields.
 - Original 49 smart/reaction keys and 32 system binding fields in the editor.
 - Basic Windows modifier chords, duplicate/reserved-key diagnostics and suspension
-  while the app is in the foreground. Smart-key prompt/fixed phrase/audio paths.
+  while editing text in the app or its detached tools. Smart-key prompt/fixed phrase/audio paths.
 - Native AI HTTP transport, key rotation, limited provider failover, cancellation.
 - Native YouTube token refresh, active-broadcast lookup, polling, initial-history
   suppression, posting, manual replies, editable review, simulation, basic idle chat.
@@ -103,8 +143,8 @@ lip sync.
 
 - Advanced multi-tap and cache-shuffle hotkey behavior; unimplemented system
   actions report this explicitly when pressed. The editor retains their settings.
-- Exact original failover policy, account/quota rotation, subscriber/statistics
-  greeting triggers, channel-account switching and new OAuth authorization UI.
+- Exact original failover policy, account/quota rotation and subscriber/statistics
+  greeting triggers.
 - Automated game-prompt/reaction rewriting, guide ghost modes, overlay ghost and
   opacity behavior, full music/YouTube controls, remote companion and generated
   full animated-avatar bridges (beyond the new SadTalker path).
