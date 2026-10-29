@@ -377,7 +377,13 @@ internal sealed partial class NativeWindow
             await HandleHotkeyAsync("hk_toggle_cache_mode");
             if (!_profile.Flag("force_cache_only") || _profile.Text("cache_playback_mode") != "repeat_all") throw new IOException("Cache-mode shortcut changed Force Cache instead of playback mode.");
         }
-        finally { _controller.PlayCachedAudio -= ObserveCache; _controller.PlayCachedAudio += PlayExistingClipAsync; }
+        finally
+        {
+            _controller.PlayCachedAudio -= ObserveCache; _controller.PlayCachedAudio += PlayExistingClipAsync;
+            // Discovery-only fixture is not an authorized account. Remove it before
+            // opening Statistics so the UI smoke cannot attempt provider traffic.
+            File.Delete(tokenFile);
+        }
         await File.WriteAllTextAsync(Path.Combine(Program.DataRoot, "game-cache-ready.txt"), "Game session UI restore, shared cache retention, singular credential discovery and original force-cache/double-tap dispatch and pending-tap cancellation passed. Media output mocked; no audio device/provider used.");
         Program.Trace("Smoke: opening keybind window");
         await HandleHotkeyAsync("hk_hotkeys_window"); await Task.Delay(500);
