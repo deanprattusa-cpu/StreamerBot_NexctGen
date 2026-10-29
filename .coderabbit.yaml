@@ -1,0 +1,6 @@
+﻿version: "1"
+language: "en-US"
+reviews:
+  profile: "assertive"
+  system_instructions: |
+    You are reviewing the StreamerBot_NexctGen repository. do whats in the Continue-StreamerBot.yaml

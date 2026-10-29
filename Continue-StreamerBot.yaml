@@ -1,0 +1,198 @@
+schema_version: 1
+project: StreamerBot Native Windows migration
+created_utc: '2026-10-29T07:09:59.046859+00:00'
+purpose: Portable continuation context. Upload this YAML and the backup ZIP in a new task; ask the next
+  agent to read them before changing code.
+repository:
+  url: https://github.com/condorianopercival-byte/StreamerBot.git
+  saved_branch: coderabbit/windows-ai-streamer-platform/c1d54908
+  saved_commit: 85aea4e347dc58d2b4a43e1258e75a3f8f9fdd69
+  original_reference_commit: e40eb6f47c7de169a0d895602ca07e7633733659
+  pushed: true
+  note: The saved branch is in the user repository. A new task must follow its own branch permissions.
+    No PR was created.
+user_requirements:
+- Build a real native Windows C#/.NET 10 LTS and WinUI 3 application with a strong upgrade path.
+- Preserve original settings, hotkeys, voices and workflows. Do not replace the original with a reduced
+  dashboard or Python/Tk launcher.
+- An isolated Python worker is accepted for original voice engines; SadTalker uses a separate selected
+  Python environment.
+- Preserve the original application as the behavioral reference. Do not discard unknown profile fields
+  or user credentials.
+- Provide a Windows installer that can be tested on another PC, with private on-demand voice dependency
+  preparation and explicit CUDA checks.
+- 'Latest request: repair Toggle_Video_Rendering/SadTalker failure and add Tools path selectors for models,
+  Python environments, caches, avatar, video output and other resources on any drive.'
+- Defer gaming assistance, autonomous play and AI training until the port and feature parity are satisfactory.
+- Current client is web UI. Use cloud Preview through coderabbit-agent-browser if a browser is needed;
+  do not use desktop browser.
+user_hardware:
+  gpu: RTX 4070 Ti
+  cpu: Intel Core i5-14600KF
+  memory: 32 GB DDR5
+  gaming_resolution: 1080p
+current_delivery_status:
+  native_version: 0.2.0 migration preview, not full behavioral parity
+  latest_windows_run:
+    id: 40833419795
+    commit: 85aea4e347dc58d2b4a43e1258e75a3f8f9fdd69
+    conclusion: failure
+    status: completed
+    url: https://github.com/condorianopercival-byte/StreamerBot/actions/runs/40833419795
+    last_failure:
+      stage: C# core check before publish; no updated installer produced
+      message: original nested resource selections resolve against profile origin
+      location: windows/StreamerBot.Native.Check/Program.cs:56
+      evidence: All 5 worker and 6 Python video checks passed on Windows. C# core passed selected models/output/missing
+        input checks, then failed this path assertion.
+      likely_cause_to_verify: Expected Path.Combine(root, "relative/python.exe") retains forward slash
+        inside second component on Windows; actual Profile.Resolve uses Path.GetFullPath and normalizes
+        separators. Compare against Path.Combine(root, "relative", "python.exe") or normalize both. Preserve
+        profile-origin contract; verify with CI rather than skipping the assertion.
+  latest_windows_run_instruction: Read this run to terminal completion. Do not call the updated installer
+    verified unless this exact revision passes. If failed, inspect logs and fix; do not weaken smoke/install
+    gates.
+  previous_verified_base:
+    commit: 369a53062b66c59ace7d3ffa7a431a2aefddcd5d
+    run_id: 40831487961
+    artifact_url: https://github.com/condorianopercival-byte/StreamerBot/actions/runs/40831487961/artifacts/12879301292
+    installer_sha256: 7cc90272af38fddc00b372f454d1bdc6ea8ad6ecd1761f6a82f5d0677da4f7fe
+    passed: 18 C# core checks, 5 worker tests, full Windows publish, native UI smoke, NSIS installer,
+      actual install/installed-app launch/uninstall retaining user-added file and synthetic data.
+    limitation: This base predates Tools Paths and video repair. Do not deliver it as the updated solution.
+  original_screenshot_diagnosis: Screenshot is the original black/green Python control panel. It launched
+    generic python against D:/BARKAIMODELS/SadTalker/inference.py, exited 1 and fell back to audio. No
+    underlying traceback was supplied. The specific dependency/GPU failure has not been reproduced.
+implementation:
+  windows/StreamerBot.Native: Native WinUI main window, settings, global hotkeys, Windows audio, auxiliary
+    windows and new PathSettingsDialog. No browser dashboard/Tkinter main UI.
+  windows/StreamerBot.Native.Core: C# profile, AI HTTP, YouTube REST, stream controller, voice process
+    protocol, ResourcePaths and VideoRenderer.
+  windows/voice: Isolated original voice worker, 5 worker checks and 6 video/path checks.
+  windows/installer: Explicit payload allowlist and per-user NSIS installer. .NET/Windows App SDK are
+    self contained.
+  resource-paths.json: 'Shared path-field catalog: 19 fields total, 17 visible in native app. Original-only
+    LivePortrait fields and native-only runtime/cache fields are filtered appropriately.'
+  resource_paths.py: Original control-panel dialog, validation and atomic path-only sidecar persistence.
+    Unknown future fields retained.
+  sadtalker_bridge.py: Selected project/venv Python, selected checkpoints/avatar/FFmpeg/output, CUDA tensor
+    probe in actual selected environment, detailed renderer.log, unique per-job output, no stale MP4 fallback.
+    Native C# owns renderer process tree and cancellation.
+  original_compatibility_changes: Only controller.py, view.py, sadtalker_bridge.py, liveportrait_bridge.py
+    and Toggle_Video_Rendering.bat were intentionally changed from frozen originals. No voice/hotkey implementation
+    removed. 35 other original manifest files verified byte-identical.
+  paths_contract_change: Voice output may be within app data OR the explicitly selected voice-cache folder.
+    Arbitrary unselected locations remain rejected. Recordings remain inside app data.
+  paths_persistence: Native paths are profile fields; relative imported paths resolve against .origin.
+    Original paths are resource_paths.json next to original app and included in config export.
+  toggle: Native installed BAT detects StreamerBot.Native.exe and toggles LOCALAPPDATA/StreamerBotNative/enable_video.txt.
+    Original BAT uses app-folder enable_video.txt. Native Tools has same toggle.
+  voice_preparation: Prepare-Voices.ps1 supports selected runtime root and existing 64-bit virtual-environment
+    Python. System Python is rejected. Uses pinned CUDA stack and real tensor checks; no silent CPU replacement.
+validation:
+  passed_local_latest:
+  - 'python3 windows/voice/test_worker.py -v: 5 passed.'
+  - 'python3 windows/voice/test_video_paths.py -v: 6 passed. Synthetic GPU/subprocess responses; no real
+    models.'
+  - 'dotnet run --project windows/StreamerBot.Native.Check -- /usr/bin/python3 ABSOLUTE_PATH/windows/voice/worker.py:
+    28 checks passed, including real native-to-Python renderer wrapper with synthetic inference.'
+  - 'dotnet build windows/StreamerBot.Native -c Release -t:Compile -p:ManifestTool=/tmp/mt-wine -p:AppxGeneratePriEnabled=false
+    --nologo -v:minimal: zero warnings/errors. Compile-only, not a complete Linux publish.'
+  - py_compile of controller.py, view.py, resource_paths.py, sadtalker_bridge.py and liveportrait_bridge.py
+    passed.
+  - PowerShell 7.6.9 parser checks for changed build and voice preparation scripts passed.
+  - 'Actual PowerShell repair-script apply on scratch original files: exact backups and profile/model/path
+    preservation passed; customized controller rejection made no writes. Fixed File.Replace empty-backup
+    argument before final pass.'
+  - 35 unaffected original manifest files byte-identical to frozen reference; 5 intentionally repaired
+    originals disclosed separately.
+  - 'Source ZIP and repair ZIP: CRC, explicit allowlists and all source/manifest content hashes passed.
+    No profile/key/token/model files included.'
+  - git diff --check passed.
+  latest_ci_first_failure: Run 40833085210 failed on a synthetic test comparing Windows short temp path
+    RUNNER~1 against resolved runneradmin spelling. Fixed fixture root with Path.resolve in commit 85aea4e;
+    all 6 local checks passed again. New Windows run is recorded above.
+  not_verified:
+  - Actual RTX 4070 Ti/SadTalker inference and original GPU dependency failure.
+  - Real audio/video playback, file-picker interaction, microphone and live service accounts.
+  - Full original behavioral parity.
+  - Latest Windows installer outcome if the recorded run is not successful.
+  historical_cuda: Previous CUDA preparation regression passes apply to unchanged helper inputs only.
+    The old 39-file whole-original identity test now conflicts with 5 user-authorized repairs. Do not
+    rewrite frozen hashes or report that assertion passed; validate unaffected files independently.
+  input_environment:
+    sandbox: Ubuntu 26.04.1; no NVIDIA GPU
+    dotnet: SDK 10.0.403; runtime 10.0.14
+    python_local: 3.14.4
+    python_ci: 3.11 x64
+    powershell: 7.6.9
+    nsis: '3.10'
+    windows_ci: windows-2025
+  full_working_record: workspace-context/validation-record.md in the original task; relevant results are
+    preserved here.
+remaining_work_in_order:
+- Latest Windows run 40833419795 is FAILED, not pending. Diagnose Program.cs line56 path-separator equality
+  as recorded in last_failure, make the narrow fix, rerun affected checks and rebuild. No updated native
+  installer is ready yet.
+- Inspect Windows run 40833419795 to terminal completion; get failed logs if needed. It exercises 28 core
+  checks, 5 worker tests, 6 video tests, full publish, native main window, Paths dialog layout, avatar-player
+  construction, installer and installed-app smoke/uninstall retention.
+- If successful, download StreamerBot-Native-Windows-x64 artifact, verify installer checksum and inspect
+  smoke image/paths-ready markers. Installer ZIP is roughly 65 MB; use Actions artifact link if Outputs
+  size limit is 25 MB.
+- Provide the updated native installer plus the separate original-control-panel repair ZIP. Explain which
+  one applies to each app. The native source ZIP is for building, not an installer.
+- 'On user Windows PC: select SadTalker project containing inference.py, its GPU-enabled venv/Scripts/python.exe,
+  avatar, optional checkpoints, FFmpeg and output in Tools Paths. Enable rendering. If it fails, inspect
+  renderer.log; do not claim the unknown original dependency error solved without evidence.'
+- Continue remaining original behavior migration only after this requested fix is verified. Consult windows/NATIVE-PARITY.md;
+  keep original app available.
+known_incomplete_features:
+- Advanced multi-tap/cache-shuffle hotkeys and some original system actions; settings retained.
+- Exact failover/account quota policies, subscriber/statistics greetings, channel switching and new-account
+  OAuth UI.
+- Automated game prompts/reactions, guide/overlay ghost behaviors, full media controls, remote companion
+  and video-cache replay workflows.
+- Force-cache-only behavior and gameplay capture/analysis.
+- RVC/Soprano loaders were not usable in original checkout and remain incomplete. Whisper package needs
+  separate compatibility.
+- LivePortrait retains original driving-video behavior; selecting its folder does not provide audio-driven
+  lip sync.
+- SadTalker project, dependencies and checkpoints are not installed by the native installer or voice installer.
+restore:
+  preferred: Clone the repository and obtain the saved commit/branch. Use the new task assigned branch
+    for further changes. Extract the source backup only if repository recovery is unavailable.
+  offline_source: StreamerBot-Native-Source.zip contains native code, worker, shared paths/video bridge,
+    build/installer scripts and SOURCE-SHA256.json. Extract into writable folder.
+  build_windows_requirements:
+  - Windows 11 x64
+  - .NET 10 x64 SDK
+  - Python 3.11 x64 for build checks
+  - NSIS 3.10
+  build_command: powershell -NoProfile -ExecutionPolicy Bypass -File .\windows\Build-NativeInstaller.ps1
+    -MakeNsis 'C:\Program Files (x86)\NSIS\makensis.exe'
+  build_output: artifacts/native/StreamerBot-Native-Setup.exe
+  workflow_note: Current push workflow matches the original assigned branch. Adapt it only to the next
+    task authorized branch, following that task permissions.
+  legacy_repair: Extract StreamerBot-ControlPanel-Paths-Video-Repair.zip separately, close original app,
+    run Apply-Paths-Video-Repair.bat and select original folder. Makes backups, rejects customized/unrecognized
+    versions before writes. Does not patch a packaged single-file Python EXE.
+  legacy_archive: StreamerBot-Portable-AutoSetup.zip is the earlier original/Python compatibility package,
+    retained for recovery. It is not the new C# native app. CUDA repair ZIP is also preserved.
+  credentials: API keys, OAuth tokens, private profiles and model files are deliberately excluded. Transfer
+    your own settings privately; YAML/source backups cannot authenticate another account.
+  account_limits: This backup transfers project files and context, not account permissions, trial time,
+    running services or access to a private GitHub repository.
+backup_files:
+  StreamerBot-Native-Source.zip:
+    bytes: 215707
+    sha256: fce69c8ff7d843784e5b1746e80767519b611e01e0f8adf1b12dc620bc0429cc
+  StreamerBot-ControlPanel-Paths-Video-Repair.zip:
+    bytes: 128244
+    sha256: 964ed4a09ce122c24651ddca5a14673663604deb40f3ee5a84a7c62276b325f0
+  StreamerBot-CUDA-Repair.zip:
+    bytes: 8600
+    sha256: a81f160c8bab74b3600ce69b867d6f7f8ccefcebd8e6e9b6135f410fd75e8063
+  StreamerBot-Portable-AutoSetup.zip:
+    bytes: 8521010
+    sha256: af1a1f14e712213542f55d2f6c28877d18657d0c4fc5654ea969d8f44b917dc2
