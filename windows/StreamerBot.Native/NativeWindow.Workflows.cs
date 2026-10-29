@@ -82,7 +82,7 @@ internal sealed partial class NativeWindow
         var path = OriginalEnvironment.TokenFile(_profile);
         if (!simulation && !File.Exists(path)) throw new InvalidOperationException($"No authorized YouTube token found for {channel?.Name ?? "this account"}. Use Credentials → Import YouTube token, or keep the original credentials folder beside the imported .env.");
         _profile.Save();
-        _controller.Start(simulation ? null : new YouTubeClient(_http, path, channel?.ChannelId), simulation);
+        _controller.Start(simulation ? null : new YouTubeClient(_http, OriginalEnvironment.TokenFiles(_profile), channel?.ChannelId), simulation);
         _channel.IsEnabled = false; _game.IsEnabled = false;
         return Task.CompletedTask;
     }
@@ -96,12 +96,23 @@ internal sealed partial class NativeWindow
     {
         ShowTool("credentials", "Credential & Paths Manager", () => Column(
             Label("Original environment & channel accounts"), Button("Import original .env", ImportEnvironmentAsync),
-            new TextBlock { Text = "Select your channel in the main window, then import its authorized *_token_N.json. Existing tokens in the credentials folder beside your .env are detected by that channel's token prefix.", TextWrapping = TextWrapping.Wrap },
-            Button("Import Google JSON / Authorize channel", AuthorizeChannelAsync),
+            new TextBlock { Text = "Choose the original credentials folder once. Keep client_secret_*.json and each channel's *_token_N.json together. Ready tokens are used directly; daily quota errors rotate to the next token. Permission errors do not rotate.", TextWrapping = TextWrapping.Wrap },
+            Button("Choose shared credentials folder", ChooseCredentialsFolderAsync),
+            Button("Show selected folder and channel tokens", () => { WriteLog("Credentials: " + OriginalEnvironment.CredentialsDirectory(_profile) + "; " + OriginalEnvironment.TokenFiles(_profile).Length + " token(s) for the selected channel."); return Task.CompletedTask; }),
+            Button("Authorize a client secret in this folder", AuthorizeChannelAsync),
             Button("Import YouTube token for selected channel", ImportTokenAsync),
             Button("API keys and voice credentials", () => { _settingsGroup.SelectedItem = "AI"; SelectTab(1); return Task.CompletedTask; }),
             Button("Models, Python and cache paths", PathsAsync)), 560, 500);
         return Task.CompletedTask;
+    }
+    private async Task ChooseCredentialsFolderAsync()
+    {
+        var picker = new Windows.Storage.Pickers.FolderPicker(); picker.FileTypeFilter.Add("*");
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(this));
+        var folder = await picker.PickSingleFolderAsync(); if (folder is null) return;
+        await StopAsync();
+        _profile.Set("native_credentials_directory", folder.Path); _profile.Save();
+        WriteLog("Shared credentials folder saved: " + folder.Path + ". Found " + OriginalEnvironment.TokenFiles(_profile).Length + " token(s) for the selected channel.");
     }
     private bool _authorizing;
     private async Task AuthorizeChannelAsync()
@@ -109,18 +120,19 @@ internal sealed partial class NativeWindow
         if (_authorizing) { WriteLog("Channel authorization is already open in your browser."); return; }
         var channel = OriginalEnvironment.Selected(_profile) ?? throw new InvalidOperationException("Select or add a channel before connecting its Google account.");
         var file = await PickAsync(".json"); if (file is null) return;
+        if (OriginalEnvironment.CredentialsDirectory(_profile).Length == 0)
+            _profile.Set("native_credentials_directory", Path.GetDirectoryName(file.Path)!);
+        var path = OriginalEnvironment.TokenForSecret(_profile, file.Path);
         _authorizing = true;
         try
         {
             await StopAsync();
             WriteLog("Complete Google authorization in your browser for " + channel.Name + ".");
             var credentials = await YouTubeAuthorization.AuthorizeAsync(_http, file.Path, uri => System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true }), _lifetime.Token);
-            var directory = Path.Combine(Program.DataRoot, "Credentials"); Directory.CreateDirectory(directory);
-            var path = Path.Combine(directory, $"channel-{channel.Number}.json");
             var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
             try { await File.WriteAllTextAsync(temporary, credentials.ToJsonString(), _lifetime.Token); File.Move(temporary, path, true); }
             finally { if (File.Exists(temporary)) File.Delete(temporary); }
-            OriginalEnvironment.SetToken(_profile, channel, path); _profile.Save();
+            _profile.Save();
             WriteLog("YouTube authorization saved for " + channel.Name + ". Select it and press Start.");
         }
         finally { _authorizing = false; }

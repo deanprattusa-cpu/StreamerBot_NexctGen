@@ -7,7 +7,7 @@
     <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition><EnableDefaultPageItems>false</EnableDefaultPageItems>
     <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants><ApplicationManifest>app.manifest</ApplicationManifest>
     <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><EnableWindowsTargeting>true</EnableWindowsTargeting>
-    <AssemblyName>StreamerBot.Native</AssemblyName><Version>0.3.1</Version><ApplicationTitle>StreamerBot Native Preview</ApplicationTitle>
+    <AssemblyName>StreamerBot.Native</AssemblyName><Version>0.3.2</Version><ApplicationTitle>StreamerBot Native Preview</ApplicationTitle>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.6.4" />

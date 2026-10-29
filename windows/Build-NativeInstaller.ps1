@@ -71,7 +71,7 @@ See NATIVE-PARITY.md for incomplete original workflows. No user secrets or model
     Set-ItemProperty 'HKCU:/Software/Microsoft/Windows/CurrentVersion/Uninstall/StreamerBotNative' -Name DisplayVersion -Value '0.3.0'
     $UpdateProcess = Start-Process -FilePath $Update -ArgumentList '/S' -PassThru -Wait
     if ($UpdateProcess.ExitCode -ne 0 -or (Get-FileHash $CoreDll).Hash -ne $ExpectedCoreHash -or (Get-FileHash $PreservedProfile).Hash -ne $ProfileHash -or (Get-FileHash $CacheFixture).Hash -ne $CacheHash -or -not (Test-Path $AddedFile)) { throw 'Update failed payload replacement or settings/cache/user-file retention' }
-    if ((Get-ItemProperty 'HKCU:/Software/Microsoft/Windows/CurrentVersion/Uninstall/StreamerBotNative').DisplayVersion -ne '0.3.1') { throw 'Update version was not recorded' }
+    if ((Get-ItemProperty 'HKCU:/Software/Microsoft/Windows/CurrentVersion/Uninstall/StreamerBotNative').DisplayVersion -ne '0.3.2') { throw 'Update version was not recorded' }
     Write-Host 'Actual update EXE / locked-app protection / profile-cache retention checks passed.'
     $InstalledSmoke = Join-Path $SmokeRoot 'installed-app'
     New-Item -ItemType Directory -Path $InstalledSmoke -Force | Out-Null

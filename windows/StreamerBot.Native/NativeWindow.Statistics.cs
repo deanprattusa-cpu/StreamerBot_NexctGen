@@ -31,7 +31,7 @@ internal sealed partial class NativeWindow
         {
             var path = OriginalEnvironment.TokenFile(_profile);
             if (!File.Exists(path)) { WriteLog("Statistics: authorize the selected channel to load live counts."); return; }
-            var client = new YouTubeClient(_http, path, OriginalEnvironment.Selected(_profile)?.ChannelId);
+            var client = new YouTubeClient(_http, OriginalEnvironment.TokenFiles(_profile), OriginalEnvironment.Selected(_profile)?.ChannelId);
             while (!_lifetime.IsCancellationRequested && _toolWindows.TryGetValue("stats", out var window) && window.IsShown)
             {
                 if (await client.FindLiveAsync(_lifetime.Token))

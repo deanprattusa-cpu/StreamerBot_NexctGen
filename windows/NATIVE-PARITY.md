@@ -1,4 +1,4 @@
-# StreamerBot Native 0.3.1 — migration preview
+# StreamerBot Native 0.3.2 — migration preview
 
 This is a new C#/.NET 10 and WinUI 3 Windows desktop application. The main UI,
 settings editor, global hotkeys, AI requests, session logic and YouTube REST
@@ -73,10 +73,25 @@ native profile. Original input files are not rewritten.
 Select a channel before Start. Authorized tokens named `<prefix>_token_N.json`
 in `credentials` beside the imported `.env` are discovered for that channel.
 Alternatively import its authorized token or authorize its Google Desktop client
-through Credentials. An explicitly assigned token belongs to that channel only.
+through Credentials. Legacy explicitly assigned tokens remain supported until a shared folder is selected.
 Live-broadcast lookup filters by the selected channel ID. Channel/game selection
-is locked during a session; stop before switching. Original account quota-driven
-credential rotation still needs migration.
+is locked during a session; stop before switching. Credentials → Choose shared credentials folder points directly at the original folder.
+All matching channel tokens are discovered in numeric order. Selecting a folder
+makes it authoritative: the app does not fall back to another folder or channel.
+Ready access tokens are reused; refreshed tokens are saved atomically in that
+same folder. New authorization pairs lexicographically sorted client_secret_*.json
+with `<prefix>_token_N.json`, matching the original Python convention.
+Daily quota errors rotate to the next token; ordinary permission errors do not.
+Exhausting the pool waits ten minutes and Stop cancels the wait. Temporary
+session errors retry; ended chats are rediscovered.
+
+Audio → Voice Selection restores the original TikTok groups, Kokoro, Edge,
+Google and Bark choices. Bark CPU/small-model/offload switches save immediately.
+Mic Input and Speaker Output have device refresh and saved native device choices.
+Voicebox, Fish and RVC setup entries edit the actual worker settings. Google TTS
+receives the selected channel token rather than requiring unrelated ambient
+Google credentials; cloud TTS API access/scopes are still required. These changes
+are not a claim that every original feature or external voice engine is verified.
 
 Tools → Keybinds & Hotkeys opens a separate topmost native window, with General,
 AI & Output, Chat Keys, Hype, Custom, Reactions, System, YouTube and Music groups.

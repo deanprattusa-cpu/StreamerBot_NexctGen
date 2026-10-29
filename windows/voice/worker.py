@@ -107,7 +107,13 @@ def synthesize(request, data):
         asyncio.run(edge_tts.Communicate(text, str(profile.get("edge_voice", "en-US-SteffanNeural"))).save(str(target)))
     elif engine == "google":
         from google.cloud import texttospeech
-        client = texttospeech.TextToSpeechClient()
+        token_file = profile.get("native_google_token_file", "")
+        if token_file:
+            from google.oauth2.credentials import Credentials
+            credentials = Credentials.from_authorized_user_file(str(token_file))
+            client = texttospeech.TextToSpeechClient(credentials=credentials)
+        else:
+            client = texttospeech.TextToSpeechClient()
         name = str(profile.get("google_voice", "en-US-Wavenet-I"))
         response = client.synthesize_speech(input=texttospeech.SynthesisInput(text=text), voice=texttospeech.VoiceSelectionParams(language_code="-".join(name.split("-")[:2]), name=name), audio_config=texttospeech.AudioConfig(audio_encoding=texttospeech.AudioEncoding.LINEAR16))
         target.write_bytes(response.audio_content)

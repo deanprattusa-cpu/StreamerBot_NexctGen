@@ -91,6 +91,7 @@ try
     await UpdateChecks.Run(root, Check);
     await KeyboardPathChecks.Run(root, Check);
     await OriginalWorkflowChecks.Run(root, Check);
+    await CredentialPoolChecks.Run(root, Check);
     Console.WriteLine($"{passes} checks passed");
 }
 finally { Directory.Delete(root, true); }

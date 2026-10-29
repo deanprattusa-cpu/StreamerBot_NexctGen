@@ -16,6 +16,7 @@ public sealed class StreamController(Profile profile, AiClient ai) : IAsyncDispo
     private readonly HashSet<string> _viewers = [];
     private int _generation;
     private readonly System.Collections.Concurrent.ConcurrentQueue<string> _recentReplies = new();
+    public YouTubeClient? YouTube => _youtube;
     public bool Running { get; private set; }
     public bool Simulation { get; private set; }
     public event Action<string>? Log;
@@ -28,10 +29,14 @@ public sealed class StreamController(Profile profile, AiClient ai) : IAsyncDispo
         if (Running) return;
         if (!simulation && youtube is null) throw new InvalidOperationException("Connect a YouTube credential first, or choose Simulate.");
         _session.Cancel(); _session.Dispose(); _session = new CancellationTokenSource();
-        _youtube = youtube; Simulation = simulation; Running = true; _viewers.Clear();
+        if (_youtube is not null) _youtube.Status -= ReportStatus;
+        _youtube = youtube;
+        if (_youtube is not null) _youtube.Status += ReportStatus;
+        Simulation = simulation; Running = true; _viewers.Clear();
         _loop = LoopAsync(_session.Token);
         Log?.Invoke(simulation ? "Simulation started. No messages will be posted to YouTube." : "Connecting to your live broadcast...");
     }
+    private void ReportStatus(string message) => Log?.Invoke(message);
     private async Task LoopAsync(CancellationToken token)
     {
         try
@@ -39,6 +44,8 @@ public sealed class StreamController(Profile profile, AiClient ai) : IAsyncDispo
             var idle = DateTimeOffset.UtcNow;
             while (!token.IsCancellationRequested)
             {
+                try
+                {
                 if (_youtube is not null)
                 {
                     if (_youtube.ChatId is null && !await _youtube.FindLiveAsync(token)) { Log?.Invoke("No active live broadcast. Retrying in 30 seconds."); await Task.Delay(30000, token); continue; }
@@ -61,6 +68,11 @@ public sealed class StreamController(Profile profile, AiClient ai) : IAsyncDispo
                 else await Task.Delay(1000, token);
                 if (profile.Flag("idle_chat", true) && !profile.Flag("hotkeys_only_mode") && DateTimeOffset.UtcNow - idle >= TimeSpan.FromSeconds(45))
                 { idle = DateTimeOffset.UtcNow; await GenerateAsync("Say one brief, natural line to the viewers while playing, without inventing an event.", "idle", token: token); }
+                }
+                catch (YouTubeApiException e) when (e.ChatGone)
+                { _youtube?.ResetLive(); Log?.Invoke("Live chat ended or became unavailable. Looking for the next broadcast."); await Task.Delay(3000, token); }
+                catch (Exception e) when (e is not OperationCanceledException)
+                { Log?.Invoke(e.Message + " Retrying the same credential in 15 seconds."); await Task.Delay(15000, token); }
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { }

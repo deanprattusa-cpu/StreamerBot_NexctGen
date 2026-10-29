@@ -5,10 +5,23 @@ using System.Text.Json.Nodes;
 namespace StreamerBot.Native.Core;
 
 public sealed record ChatMessage(string Id, string Author, string Text, string PublishedAt);
+public sealed class YouTubeApiException(int status, string reason) : Exception($"YouTube request failed (HTTP {status}, {reason}).")
+{
+    public bool DailyQuota => reason is "quotaExceeded" or "dailyLimitExceeded";
+    public bool ChatGone => reason is "liveChatEnded" or "liveChatNotFound" or "liveChatDisabled";
+}
 public sealed class YouTubeClient(HttpClient http, string credentialFile, string? expectedChannelId = null)
 {
+    private string[] _credentialFiles = [credentialFile];
+    private int _credentialIndex;
+    private readonly SemaphoreSlim _requests = new(1);
+    public event Action<string>? Status;
+    public YouTubeClient(HttpClient http, string[] credentialFiles, string? expectedChannelId = null)
+        : this(http, credentialFiles.FirstOrDefault() ?? throw new InvalidDataException("No channel tokens found."), expectedChannelId)
+    { _credentialFiles = credentialFiles.ToArray(); }
     private string _access = "";
     private DateTimeOffset _expires;
+    public string CurrentCredentialFile => _credentialFiles[_credentialIndex];
     public string? ChatId { get; private set; }
     public string? VideoId { get; private set; }
     private string? _page;
@@ -18,23 +31,57 @@ public sealed class YouTubeClient(HttpClient http, string credentialFile, string
     private async Task<string> AccessAsync(CancellationToken token)
     {
         if (_access.Length > 0 && _expires > DateTimeOffset.UtcNow.AddMinutes(1)) return _access;
-        var credentials = JsonNode.Parse(await File.ReadAllTextAsync(credentialFile, token))?.AsObject() ?? throw new InvalidDataException("Invalid YouTube token file.");
+        var credentials = JsonNode.Parse(await File.ReadAllTextAsync(_credentialFiles[_credentialIndex], token))?.AsObject() ?? throw new InvalidDataException("Invalid YouTube token file.");
+        if (DateTimeOffset.TryParse(credentials["expiry"]?.GetValue<string>(), System.Globalization.CultureInfo.InvariantCulture,
+                System.Globalization.DateTimeStyles.AssumeUniversal, out var expiry) && expiry > DateTimeOffset.UtcNow.AddMinutes(1)
+            && credentials["token"]?.GetValue<string>() is { Length: > 0 } saved)
+        { _access = saved; _expires = expiry; return _access; }
         using var response = await http.PostAsync("https://oauth2.googleapis.com/token", new FormUrlEncodedContent(new Dictionary<string, string>
         { ["client_id"] = credentials["client_id"]?.GetValue<string>() ?? "", ["client_secret"] = credentials["client_secret"]?.GetValue<string>() ?? "", ["refresh_token"] = credentials["refresh_token"]?.GetValue<string>() ?? "", ["grant_type"] = "refresh_token" }), token);
         if (!response.IsSuccessStatusCode) throw new InvalidOperationException($"YouTube authorization failed (HTTP {(int)response.StatusCode}). Reconnect the account.");
         var data = await response.Content.ReadFromJsonAsync<JsonObject>(cancellationToken: token);
         _access = data?["access_token"]?.GetValue<string>() ?? throw new InvalidDataException("Missing YouTube access token.");
         _expires = DateTimeOffset.UtcNow.AddSeconds(data?["expires_in"]?.GetValue<int>() ?? 3600);
+        credentials["token"] = _access;
+        credentials["expiry"] = _expires.UtcDateTime.ToString("O");
+        var path = _credentialFiles[_credentialIndex];
+        var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try { await File.WriteAllTextAsync(temporary, credentials.ToJsonString(), token); File.Move(temporary, path, true); }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
         return _access;
     }
-    private async Task<JsonObject> GetAsync(string query, CancellationToken token)
+    private async Task<JsonObject> RequestAsync(HttpMethod method, string query, object? body, CancellationToken token)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, "https://www.googleapis.com/youtube/v3/" + query);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", await AccessAsync(token));
-        using var response = await http.SendAsync(request, token);
-        if (!response.IsSuccessStatusCode) throw new InvalidOperationException($"YouTube request failed (HTTP {(int)response.StatusCode}). Check permissions, quota and stream status.");
-        return await response.Content.ReadFromJsonAsync<JsonObject>(cancellationToken: token) ?? throw new InvalidDataException("Empty YouTube response.");
+        await _requests.WaitAsync(token);
+        try
+        {
+            while (true)
+            {
+                using var request = new HttpRequestMessage(method, "https://www.googleapis.com/youtube/v3/" + query);
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", await AccessAsync(token));
+                if (body is not null) request.Content = JsonContent.Create(body);
+                using var response = await http.SendAsync(request, token);
+                var data = await response.Content.ReadFromJsonAsync<JsonObject>(cancellationToken: token) ?? new JsonObject();
+                if (response.IsSuccessStatusCode) return data;
+                var reason = data["error"]?["errors"]?[0]?["reason"]?.GetValue<string>() ?? "unknown";
+                var error = new YouTubeApiException((int)response.StatusCode, reason);
+                if (!error.DailyQuota) throw error;
+                _access = ""; _expires = default;
+                _credentialIndex++;
+                if (_credentialIndex >= _credentialFiles.Length)
+                {
+                    _credentialIndex = 0;
+                    Status?.Invoke("All channel credentials reached daily quota. Retrying in 10 minutes; Stop cancels the wait.");
+                    await Task.Delay(TimeSpan.FromMinutes(10), token);
+                }
+                else Status?.Invoke($"Daily quota reached. Switching to channel credential {_credentialIndex + 1} of {_credentialFiles.Length}.");
+            }
+        }
+        finally { _requests.Release(); }
     }
+    private Task<JsonObject> GetAsync(string query, CancellationToken token) => RequestAsync(HttpMethod.Get, query, null, token);
+    public void ResetLive()
+    { ChatId = null; VideoId = null; _page = null; _ownerChannel = null; _seen.Clear(); _initial = true; }
     public async Task<bool> FindLiveAsync(CancellationToken token)
     {
         var root = await GetAsync("liveBroadcasts?part=id,snippet,status&mine=true&maxResults=50", token);
@@ -80,11 +127,8 @@ public sealed class YouTubeClient(HttpClient http, string credentialFile, string
     public async Task SendAsync(string text, CancellationToken token)
     {
         if (ChatId is null) throw new InvalidOperationException("No live YouTube chat is connected.");
-        using var request = new HttpRequestMessage(HttpMethod.Post, "https://www.googleapis.com/youtube/v3/liveChat/messages?part=snippet");
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", await AccessAsync(token));
-        request.Content = JsonContent.Create(new { snippet = new { liveChatId = ChatId, type = "textMessageEvent", textMessageDetails = new { messageText = text.Length > 200 ? text[..200] : text } } });
-        using var response = await http.SendAsync(request, token);
-        if (!response.IsSuccessStatusCode) throw new InvalidOperationException($"YouTube send failed (HTTP {(int)response.StatusCode}).");
+        await RequestAsync(HttpMethod.Post, "liveChat/messages?part=snippet",
+            new { snippet = new { liveChatId = ChatId, type = "textMessageEvent", textMessageDetails = new { messageText = text.Length > 200 ? text[..200] : text } } }, token);
     }
     public async Task<JsonObject> StatisticsAsync(CancellationToken token) => VideoId is null ? new JsonObject() : await GetAsync("videos?part=statistics,liveStreamingDetails&id=" + Uri.EscapeDataString(VideoId), token);
 }

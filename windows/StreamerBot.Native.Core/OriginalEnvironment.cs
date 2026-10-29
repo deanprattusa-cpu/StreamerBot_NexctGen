@@ -65,7 +65,7 @@ public static class OriginalEnvironment
     }
     public static void ImportProfile(Profile profile, string path)
     {
-        var retained = new[] { ValuesKey, "native_environment_directory", "native_channel_tokens", "native_youtube_token_path" }.ToDictionary(k => k, k => profile.Data[k]?.DeepClone());
+        var retained = new[] { ValuesKey, "native_environment_directory", "native_credentials_directory", "native_channel_tokens", "native_youtube_token_path" }.ToDictionary(k => k, k => profile.Data[k]?.DeepClone());
         profile.Import(path);
         foreach (var (key, value) in retained) if (!profile.Data.ContainsKey(key) && value is not null) profile.Set(key, value);
     }
@@ -107,18 +107,49 @@ public static class OriginalEnvironment
         var paths = profile.Data["native_channel_tokens"]?.DeepClone() as JsonObject ?? new JsonObject();
         paths[channel.Number.ToString()] = Path.GetFullPath(path); profile.Set("native_channel_tokens", paths);
     }
-    public static string TokenFile(Profile profile)
+    public static string CredentialsDirectory(Profile profile)
+    {
+        var selected = profile.Text("native_credentials_directory");
+        if (selected.Length > 0) return profile.Resolve(selected);
+        var origin = profile.Text("native_environment_directory");
+        return origin.Length > 0 ? Path.Combine(origin, "credentials") : "";
+    }
+    public static string[] TokenFiles(Profile profile)
     {
         var channel = Selected(profile);
-        if (channel is null) return profile.Text("native_youtube_token_path");
-        if (profile.Data["native_channel_tokens"]?[channel.Number.ToString()] is JsonValue explicitPath && explicitPath.TryGetValue<string>(out var path) && path.Length > 0) return profile.Resolve(path);
-        var directory = profile.Text("native_environment_directory");
-        if (directory.Length == 0 || channel.TokenPrefix.Length == 0) return "";
-        var credentials = Path.Combine(directory, "credentials");
-        if (!Directory.Exists(credentials)) return "";
-        // Compare file names; a prefix is never interpreted as a path or a wildcard.
-        var pattern = "^" + Regex.Escape(channel.TokenPrefix) + @"_token_(\d+)\.json$";
-        return Directory.EnumerateFiles(credentials, "*.json").Select(p => (Path: p, Match: Regex.Match(Path.GetFileName(p), pattern)))
-            .Where(p => p.Match.Success).OrderBy(p => p.Match.Groups[1].Value.Length).ThenBy(p => p.Match.Groups[1].Value, StringComparer.Ordinal).Select(p => p.Path).FirstOrDefault() ?? "";
+        var folder = CredentialsDirectory(profile);
+        if (profile.Text("native_credentials_directory").Length == 0 && channel is not null &&
+            profile.Data["native_channel_tokens"]?[channel.Number.ToString()] is JsonValue value &&
+            value.TryGetValue<string>(out var assigned) && assigned.Length > 0) return [profile.Resolve(assigned)];
+        if (channel is not null && channel.TokenPrefix.Length > 0 && Directory.Exists(folder))
+        {
+            // Match names, never interpret a channel prefix as a path or glob.
+            var pattern = "^" + Regex.Escape(channel.TokenPrefix) + @"_token_(\d+)\.json$";
+            var found = Directory.EnumerateFiles(folder, "*.json")
+                .Select(p => (Path: p, Match: Regex.Match(Path.GetFileName(p), pattern)))
+                .Where(p => p.Match.Success).OrderBy(p => p.Match.Groups[1].Value.Length)
+                .ThenBy(p => p.Match.Groups[1].Value, StringComparer.Ordinal).Select(p => p.Path).ToArray();
+            if (found.Length > 0) return found;
+            // An explicitly selected folder is authoritative; don't silently use another account location.
+            if (profile.Text("native_credentials_directory").Length > 0) return [];
+        }
+        if (profile.Text("native_credentials_directory").Length > 0) return [];
+        var legacy = channel is null ? profile.Text("native_youtube_token_path") :
+            profile.Data["native_channel_tokens"]?[channel.Number.ToString()]?.GetValue<string>() ?? "";
+        return legacy.Length > 0 ? [profile.Resolve(legacy)] : [];
+    }
+    public static string TokenFile(Profile profile) => TokenFiles(profile).FirstOrDefault() ?? "";
+
+    public static string TokenForSecret(Profile profile, string secret)
+    {
+        var channel = Selected(profile) ?? throw new InvalidOperationException("Select a channel first.");
+        if (channel.TokenPrefix.Length == 0 || channel.TokenPrefix.IndexOfAny(['/', '\\', ':']) >= 0)
+            throw new InvalidDataException("Set a valid channel token prefix in your .env.");
+        var folder = CredentialsDirectory(profile);
+        // Python sorts client_secret_*.json lexicographically before assigning token ordinals.
+        var secrets = Directory.GetFiles(folder, "client_secret_*.json").Order(StringComparer.Ordinal).ToArray();
+        var index = Array.FindIndex(secrets, p => Path.GetFullPath(p).Equals(Path.GetFullPath(secret), StringComparison.OrdinalIgnoreCase));
+        if (index < 0) throw new InvalidDataException("Select a client_secret_*.json inside the shared credentials folder.");
+        return Path.Combine(folder, $"{channel.TokenPrefix}_token_{index + 1}.json");
     }
 }

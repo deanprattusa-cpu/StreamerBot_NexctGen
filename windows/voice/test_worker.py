@@ -15,6 +15,36 @@ SPEC.loader.exec_module(worker)
 
 
 class WorkerChecks(unittest.TestCase):
+    def test_google_uses_selected_original_token(self):
+        with tempfile.TemporaryDirectory() as directory:
+            selected = str(Path(directory) / "channel_token_2.json")
+            seen = []
+            credential = object()
+            class Credentials:
+                @staticmethod
+                def from_authorized_user_file(path):
+                    seen.append(path)
+                    return credential
+            class Client:
+                def __init__(self, **kwargs):
+                    self.asserted = kwargs["credentials"] is credential
+                    if not self.asserted:
+                        raise AssertionError("selected credentials not passed")
+                def synthesize_speech(self, **kwargs):
+                    return types.SimpleNamespace(audio_content=b"synthetic audio" * 20)
+            factory = lambda **kwargs: types.SimpleNamespace(**kwargs)
+            tts = types.SimpleNamespace(TextToSpeechClient=Client, SynthesisInput=factory,
+                VoiceSelectionParams=factory, AudioConfig=factory,
+                AudioEncoding=types.SimpleNamespace(LINEAR16=1))
+            with patch.dict(sys.modules, {"google": types.ModuleType("google"),
+                    "google.cloud": types.SimpleNamespace(texttospeech=tts),
+                    "google.oauth2": types.ModuleType("google.oauth2"),
+                    "google.oauth2.credentials": types.SimpleNamespace(Credentials=Credentials)}):
+                result = worker.synthesize({"text": "Hello", "profile": {"tts_mode": "google",
+                    "native_google_token_file": selected}}, Path(directory))
+            self.assertEqual(seen, [selected])
+            self.assertTrue(Path(result["audio"]).exists())
+
     def test_cache_hit_survives_unrelated_settings(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

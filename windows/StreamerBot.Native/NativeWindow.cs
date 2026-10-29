@@ -230,6 +230,7 @@ internal sealed partial class NativeWindow : Window
         Command(tools, "Keyboard Shortcuts overlay", () => { ShowShortcutGuide(); return Task.CompletedTask; }); Command(tools, "Game guide / live context", GuideAsync); Command(tools, "Live statistics", StatsAsync); Command(tools, "Batch voice cache builder", BatchCacheAsync);
         Command(tools, "Standalone YouTube overlay", ShowYouTubeAsync); Command(tools, "Caption / avatar overlay", ShowOverlayAsync); Command(tools, "Music player", ShowMusicAsync); Command(tools, "Migration status", () => { SelectTab(4); return Task.CompletedTask; });
         var audio = Menu("Audio");
+        BuildOriginalVoiceMenu(audio);
         Command(audio, "Voice presets / devices", () => { SelectTab(3); return Task.CompletedTask; });
         Command(audio, "Test TTS voice", () => SpeakAsync("Hello! Your stream voice is ready to test.", "test", _lifetime.Token)); Command(audio, "Record / transcribe microphone", RecordAsync);
         Command(audio, "Install / repair voice engines", () => PrepareVoicesAsync(false)); Command(audio, "Repair CUDA voice runtime", () => PrepareVoicesAsync(true)); Command(audio, "GPU diagnostics", GpuAsync);
@@ -307,7 +308,7 @@ internal sealed partial class NativeWindow : Window
         var stt = new ComboBox { Header = "Speech recognition", ItemsSource = new[] { "google", "whisper" }, SelectedItem = _profile.Text("stt_mode", "google"), Width = 180 }; stt.SelectionChanged += (_, _) => _profile.Set("stt_mode", stt.SelectedItem?.ToString() ?? "google");
         return new ScrollViewer { Content = Column(new TextBlock { Text = "Voice engine", FontSize = 20 }, _voices, volume, windowsVoice, cpu, small, low, Row(Button("Test voice", () => SpeakAsync("Hello, this is your stream voice test.", "test", _lifetime.Token)), Button("GPU diagnostics", GpuAsync)), Row(Button("Install / repair voice engines", () => PrepareVoicesAsync(false)), Button("Repair CUDA", () => PrepareVoicesAsync(true))), microphone, speaker, refresh, stt, Button("Start / stop microphone recording", RecordAsync), Button("Model / voice presets and all voice settings", () => { _settingsGroup.SelectedItem = "Voice"; SelectTab(1); return Task.CompletedTask; }), new TextBlock { Text = "Windows offline speech is built into the native app. Other engines use an isolated voice worker. Missing private Python is downloaded on first voice use; internet is required. Model weights, API keys and logins are not bundled. Imported numeric device indices are preserved; select devices on each PC because device identities differ.", TextWrapping = TextWrapping.Wrap }) };
     }
-    private UIElement BuildStatus() => new ScrollViewer { Content = Column(new TextBlock { Text = "Native migration preview", FontSize = 24 }, new TextBlock { Text = "This build is a native C# / WinUI interface with C# settings, hotkeys, AI transport, session logic and YouTube REST integration. Voice/speech models and the SadTalker renderer use separate Python engine environments. It does not launch the original Tk UI or a browser dashboard.", TextWrapping = TextWrapping.Wrap }, new TextBlock { Text = "Implemented paths: full original profile field retention and export; key/prompt/voice editors; basic global key chords; provider requests and failover; chat/review/simulation; offline voice; worker-backed synthesis; CUDA checks; microphone recording; music/caption/YouTube auxiliary windows. Windows and external-service checks are still required.", TextWrapping = TextWrapping.Wrap }, new TextBlock { Text = "Parity still incomplete: original advanced hotkey multi-tap/cache-shuffle behavior, automated game-prompt/reaction rewriting, all subscriber/statistics-triggered greetings, account quota rotation, guide ghost modes, original remote companion and full avatar rendering bridges and complete cache-batch workflow. Original RVC and Soprano loaders were already incomplete. A retained setting or visible menu choice does not prove its behavior is implemented. See NATIVE-PARITY.md in the installation folder.", TextWrapping = TextWrapping.Wrap }, Button("Open installation folder", () => { Process.Start(new ProcessStartInfo(AppContext.BaseDirectory) { UseShellExecute = true }); return Task.CompletedTask; })) };
+    private UIElement BuildStatus() => new ScrollViewer { Content = Column(new TextBlock { Text = "Native migration preview", FontSize = 24 }, new TextBlock { Text = "This build is a native C# / WinUI interface with C# settings, hotkeys, AI transport, session logic and YouTube REST integration. Voice/speech models and the SadTalker renderer use separate Python engine environments. It does not launch the original Tk UI or a browser dashboard.", TextWrapping = TextWrapping.Wrap }, new TextBlock { Text = "Implemented paths: full original profile field retention and export; key/prompt/voice editors; basic global key chords; provider requests and failover; chat/review/simulation; offline voice; worker-backed synthesis; CUDA checks; microphone recording; music/caption/YouTube auxiliary windows. Windows and external-service checks are still required.", TextWrapping = TextWrapping.Wrap }, new TextBlock { Text = "Parity still incomplete: original advanced hotkey multi-tap/cache-shuffle behavior, automated game-prompt/reaction rewriting, all subscriber/statistics-triggered greetings, guide ghost modes, original remote companion and full avatar rendering bridges and complete cache-batch workflow. Original RVC and Soprano loaders were already incomplete. A retained setting or visible menu choice does not prove its behavior is implemented. See NATIVE-PARITY.md in the installation folder.", TextWrapping = TextWrapping.Wrap }, Button("Open installation folder", () => { Process.Start(new ProcessStartInfo(AppContext.BaseDirectory) { UseShellExecute = true }); return Task.CompletedTask; })) };
     private void WriteLog(string text) => DispatcherQueue.TryEnqueue(() =>
     {
         var line = $"[{DateTime.Now:HH:mm:ss}] {text}";
@@ -420,11 +421,17 @@ internal sealed partial class NativeWindow : Window
         var document = JsonNode.Parse(await File.ReadAllTextAsync(file.Path))?.AsObject() ?? throw new InvalidDataException("Invalid token JSON.");
         foreach (var key in new[] { "client_id", "client_secret", "refresh_token" }) if (string.IsNullOrWhiteSpace(document[key]?.GetValue<string>())) throw new InvalidDataException("Select the original authorized-user token file containing " + key + ". Client-secret files need account authorization first.");
         var channel = OriginalEnvironment.Selected(_profile);
-        var directory = Path.Combine(Program.DataRoot, "Credentials"); Directory.CreateDirectory(directory); var target = Path.Combine(directory, channel is null ? "youtube.json" : $"channel-{channel.Number}.json");
         await StopAsync();
-        if (!Path.GetFullPath(file.Path).Equals(target, StringComparison.OrdinalIgnoreCase)) File.Copy(file.Path, target, true);
-        if (channel is null) _profile.Set("native_youtube_token_path", target); else OriginalEnvironment.SetToken(_profile, channel, target);
-        _profile.Save(); WriteLog("YouTube token copied for " + (channel?.Name ?? "the legacy account") + ".");
+        var directory = Path.GetDirectoryName(file.Path)!;
+        if (channel is not null)
+        {
+            var pattern = "^" + System.Text.RegularExpressions.Regex.Escape(channel.TokenPrefix) + @"_token_\d+\.json$";
+            if (!System.Text.RegularExpressions.Regex.IsMatch(Path.GetFileName(file.Path), pattern))
+                throw new InvalidDataException("Select a token named " + channel.TokenPrefix + "_token_N.json for the selected channel.");
+            _profile.Set("native_credentials_directory", directory);
+        }
+        else _profile.Set("native_youtube_token_path", file.Path);
+        _profile.Save(); WriteLog("Using the original token in " + directory + ". Other tokens for this channel are available for quota rotation.");
     }
     private async Task ExportLogAsync() { var file = await SaveFileAsync("StreamerBot-session", ".txt"); if (file is not null) await File.WriteAllTextAsync(file.Path, _log.Text); }
     private readonly SemaphoreSlim _speechGate = new(1);
@@ -449,6 +456,7 @@ internal sealed partial class NativeWindow : Window
             if (!File.Exists(ResourcePaths.VoicePython(_profile, Program.DataRoot))) await PrepareVoicesAsync(false);
             var workerProfile = _profile.Data.DeepClone().AsObject();
             foreach (var entry in ResourcePaths.Entries) if (ResourcePaths.Value(_profile, entry.Key).Length > 0) workerProfile[entry.Key] = ResourcePaths.Get(_profile, entry.Key);
+            workerProfile["native_google_token_file"] = (_controller.Running ? _controller.YouTube?.CurrentCredentialFile : null) ?? OriginalEnvironment.TokenFile(_profile);
             workerProfile["global_model_path"] = ResourcePaths.Models(_profile, Program.DataRoot);
             workerProfile["voice_cache_path"] = ResourcePaths.VoiceCache(_profile, Program.DataRoot);
             var result = await _voice.CallAsync("speak", new JsonObject { ["text"] = text, ["category"] = category.Replace("cache:", ""), ["profile"] = workerProfile, ["cache_only"] = _profile.Flag("force_cache_only") }, token);
