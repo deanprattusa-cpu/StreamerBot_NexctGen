@@ -78,6 +78,34 @@ See NATIVE-PARITY.md for incomplete original workflows. No user secrets or model
     $InstalledProcess = Start-Process -FilePath (Join-Path $Installed 'StreamerBot.Native.exe') -ArgumentList @('--smoke-test', ('"' + $InstalledSmoke + '"')) -PassThru
     if (-not $InstalledProcess.WaitForExit(30000)) { $InstalledProcess.Kill(); throw 'Installed native app smoke test timed out' }
     if ($InstalledProcess.ExitCode -ne 0 -or -not (Test-Path (Join-Path $InstalledSmoke 'smoke-ready.txt')) -or -not (Test-Path (Join-Path $InstalledSmoke 'original-workflows-ready.txt')) -or -not (Test-Path (Join-Path $InstalledSmoke 'keyboard-ready.txt')) -or -not (Test-Path (Join-Path $InstalledSmoke 'overlay-drag-ready.txt')) -or -not (Test-Path (Join-Path $InstalledSmoke 'paths-ready.txt'))) { throw 'Installed native app did not start successfully' }
+    # Exercise the exact silent handoff used by Help -> Check for updates.
+    $RunningApp = Start-Process -FilePath (Join-Path $Installed 'StreamerBot.Native.exe') -PassThru
+    $RestartedApp = $null
+    try {
+        $Deadline = (Get-Date).AddSeconds(15)
+        do { Start-Sleep -Milliseconds 200; $RunningApp.Refresh() } while (-not $RunningApp.HasExited -and $RunningApp.MainWindowHandle -eq 0 -and (Get-Date) -lt $Deadline)
+        if ($RunningApp.HasExited -or $RunningApp.MainWindowHandle -eq 0) { throw 'Installed app did not open for update handoff' }
+        $HandoffUpdate = Start-Process -FilePath $Update -ArgumentList @('/S','/RESTART',('/APP_PID=' + $RunningApp.Id)) -PassThru
+        Start-Sleep -Milliseconds 500
+        if ($HandoffUpdate.HasExited) { throw 'Update did not wait for the running application' }
+        if (-not $RunningApp.CloseMainWindow() -or -not $RunningApp.WaitForExit(15000)) { throw 'Application did not close cleanly for update' }
+        if (-not $HandoffUpdate.WaitForExit(30000) -or $HandoffUpdate.ExitCode -ne 0) { throw 'Silent update handoff failed' }
+        $Deadline = (Get-Date).AddSeconds(15)
+        do {
+            Start-Sleep -Milliseconds 200
+            $RestartedApp = Get-Process -Name 'StreamerBot.Native' -ErrorAction SilentlyContinue | Where-Object { $_.Id -ne $RunningApp.Id -and $_.Path -eq (Join-Path $Installed 'StreamerBot.Native.exe') } | Select-Object -First 1
+        } while ((-not $RestartedApp -or $RestartedApp.MainWindowHandle -eq 0) -and (Get-Date) -lt $Deadline)
+        if (-not $RestartedApp -or $RestartedApp.MainWindowHandle -eq 0) { throw 'Update did not reopen the installed application' }
+        if (-not $RestartedApp.CloseMainWindow() -or -not $RestartedApp.WaitForExit(15000)) { throw 'Restarted application did not close cleanly' }
+    } finally {
+        foreach ($AppProcess in @($RunningApp, $RestartedApp)) { if ($AppProcess -and -not $AppProcess.HasExited) { $AppProcess.Kill(); $AppProcess.WaitForExit() } }
+    }
+    $SavedAfterRestart = Get-Content $PreservedProfile -Raw | ConvertFrom-Json
+    if ($SavedAfterRestart.voice_cache_path -ne $PreservedCache -or -not $SavedAfterRestart.future_setting.retained -or (Get-FileHash $CacheFixture).Hash -ne $CacheHash) { throw 'Update restart lost selected cache or unknown settings' }
+    # Normal app close saves toolbar settings; retain that new baseline for uninstall.
+    $ProfileHash = (Get-FileHash $PreservedProfile).Hash
+    'Silent update waited for the running app and reopened it; selected cache and unknown settings retained.' | Set-Content (Join-Path $SmokeRoot 'update-ready.txt')
+    Write-Host 'Actual silent update / running-app PID wait / restart checks passed.'
     $UninstallProcess = Start-Process -FilePath (Join-Path $Installed 'Uninstall.exe') -ArgumentList '/S' -PassThru -Wait
     $Deadline = (Get-Date).AddSeconds(30)
     while ((Test-Path (Join-Path $Installed 'StreamerBot.Native.exe')) -and (Get-Date) -lt $Deadline) { Start-Sleep -Milliseconds 250 }
