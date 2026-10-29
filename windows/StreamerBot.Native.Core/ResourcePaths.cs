@@ -38,14 +38,43 @@ public static class ResourcePaths
         var boundary = Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
         return Path.GetFullPath(file).StartsWith(boundary, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal);
     }
-    public static string[] Validate(Profile profile) => Entries.Select(entry =>
+    /// <summary>Save edited selections without making unrelated stale imported paths a save blocker.</summary>
+    public static void SaveSelections(Profile profile, IReadOnlyDictionary<string, string> selections, bool? videoUseCpu = null)
     {
-        var value = Get(profile, entry.Key);
+        var normalized = new Dictionary<string, string>();
+        var errors = new List<string>();
+        foreach (var (key, text) in selections)
+        {
+            var entry = Entries.SingleOrDefault(e => e.Key == key) ?? throw new ArgumentException("Unknown resource path: " + key);
+            var value = text.Trim();
+            value = value.Length == 0 ? "" : profile.Resolve(Environment.ExpandEnvironmentVariables(value));
+            normalized[key] = value;
+            if (value != Get(profile, key) && ValidateValue(entry, value) is string error) errors.Add(error);
+        }
+        if (errors.Count > 0) throw new InvalidDataException(string.Join(Environment.NewLine, errors));
+        var before = profile.Data.DeepClone().AsObject();
+        try
+        {
+            foreach (var (key, value) in normalized) profile.Set(key, value);
+            if (videoUseCpu.HasValue) profile.Set("video_use_cpu", videoUseCpu.Value);
+            profile.Save();
+        }
+        catch
+        {
+            profile.Data.Clear();
+            foreach (var field in before) profile.Set(field.Key, field.Value);
+            throw;
+        }
+    }
+    private static string? ValidateValue(ResourcePathEntry entry, string value)
+    {
         if (value.Length == 0) return null;
         if (entry.Kind == "file" && !File.Exists(value)) return entry.Label + ": file not found";
         if (entry.Kind == "folder" && !Directory.Exists(value)) return entry.Label + ": folder not found";
         if (entry.Kind == "output" && File.Exists(value)) return entry.Label + ": select a folder";
         if (entry.Key == "sadtalker_path" && !File.Exists(Path.Combine(value, "inference.py"))) return "SadTalker folder must contain inference.py";
         return null;
-    }).Where(message => message is not null).Cast<string>().ToArray();
+    }
+    public static string[] Validate(Profile profile) => Entries.Select(entry => ValidateValue(entry, Get(profile, entry.Key)))
+        .Where(message => message is not null).Cast<string>().ToArray();
 }

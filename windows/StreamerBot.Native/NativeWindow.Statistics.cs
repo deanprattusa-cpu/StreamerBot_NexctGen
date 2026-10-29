@@ -18,7 +18,7 @@ internal sealed partial class NativeWindow
             grid.ColumnDefinitions.Add(new ColumnDefinition()); var (name, value, background) = tiles[i];
             var tile = new StackPanel { Background = background, Spacing = 20, Padding = new Thickness(8) };
             tile.Children.Add(new TextBlock { Text = name, HorizontalAlignment = HorizontalAlignment.Center, FontWeight = Microsoft.UI.Text.FontWeights.Bold }); tile.Children.Add(value);
-            tile.PointerPressed += (_, e) => { if (e.GetCurrentPoint(tile).Properties.IsLeftButtonPressed) { e.Handled = true; _toolWindows["stats"].Drag(); } };
+            FloatingWindow.AttachDrag(tile, () => _toolWindows["stats"]);
             Grid.SetColumn(tile, i); grid.Children.Add(tile);
         }
         return grid;

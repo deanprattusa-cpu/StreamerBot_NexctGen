@@ -1,5 +1,8 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Automation.Peers;
+using Microsoft.UI.Xaml.Automation.Provider;
+using Microsoft.UI.Xaml.Media;
 using StreamerBot.Native.Core;
 using Windows.Storage.Pickers;
 
@@ -7,7 +10,14 @@ namespace StreamerBot.Native;
 
 internal static class PathSettingsDialog
 {
-    internal static async Task<bool> ShowAsync(Window owner, XamlRoot root, Profile profile)
+    private static Button? FindButton(DependencyObject parent, string name)
+    {
+        if (parent is Button button && button.Name == name) return button;
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+            if (FindButton(VisualTreeHelper.GetChild(parent, i), name) is Button found) return found;
+        return null;
+    }
+    internal static async Task<bool> ShowAsync(Window owner, XamlRoot root, Profile profile, string? smokeCachePath = null)
     {
         var rows = new StackPanel { Spacing = 14, MinWidth = 620 };
         rows.Children.Add(new TextBlock { Text = "Choose resources on any drive. Blank uses automatic defaults. Existing files are kept in place; output folders are created when used. Saving restarts the voice worker. Models still need their original engines and dependencies.", TextWrapping = TextWrapping.Wrap });
@@ -49,15 +59,9 @@ internal static class PathSettingsDialog
         {
             try
             {
-            var draft = new Profile(Path.Combine(Path.GetTempPath(), "StreamerBot-path-validation-" + Guid.NewGuid().ToString("N"), "unused.json"));
-            foreach (var field in fields) draft.Set(field.Key, field.Value.Text.Trim() is { Length: > 0 } value ? profile.Resolve(Environment.ExpandEnvironmentVariables(value)) : "");
-            var errors = ResourcePaths.Validate(draft);
-            if (errors.Length > 0) { args.Cancel = true; status.Text = string.Join(Environment.NewLine, errors); return; }
-            foreach (var field in fields) profile.Set(field.Key, draft.Text(field.Key));
-            profile.Set("video_use_cpu", cpu.IsChecked == true);
-            profile.Save();
+                ResourcePaths.SaveSelections(profile, fields.ToDictionary(field => field.Key, field => field.Value.Text), cpu.IsChecked == true);
             }
-            catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException)
+            catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException or ArgumentException or InvalidOperationException)
             { args.Cancel = true; status.Text = "Paths could not be saved: " + error.Message; }
         };
         if (Program.SmokeTest)
@@ -68,8 +72,20 @@ internal static class PathSettingsDialog
                 timer.Tick += (_, _) =>
                 {
                     timer.Stop();
-                    if (rows.ActualHeight > 0 && fields.Count == ResourcePaths.Entries.Length) File.WriteAllText(Path.Combine(Program.DataRoot, "paths-ready.txt"), "Native paths dialog loaded all resource fields.");
-                    dialog.Hide();
+                    if (rows.ActualHeight <= 0 || fields.Count != ResourcePaths.Entries.Length) throw new IOException("Native paths dialog did not load its resource fields.");
+                    if (smokeCachePath is not null)
+                    {
+                        fields["voice_cache_path"].Text = smokeCachePath;
+                        var button = FindButton(dialog, "PrimaryButton") ?? throw new IOException("Paths Save button did not load.");
+                        var peer = new ButtonAutomationPeer(button);
+                        ((IInvokeProvider)peer.GetPattern(PatternInterface.Invoke)).Invoke();
+                    }
+                    else
+                    {
+                        if (fields["voice_cache_path"].Text != ResourcePaths.Value(new Profile(profile.StoragePath), "voice_cache_path")) throw new IOException("Reopened paths dialog lost the saved cache selection.");
+                        File.WriteAllText(Path.Combine(Program.DataRoot, "paths-ready.txt"), "Paths Save button persisted selected cache; reopened dialog retained it.");
+                        dialog.Hide();
+                    }
                 };
                 timer.Start();
             };

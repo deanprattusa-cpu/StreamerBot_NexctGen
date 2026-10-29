@@ -2,7 +2,7 @@ name: Native Windows installer
 on:
   push:
     branches: [coderabbit/continue-from-yaml/43521e9c]
-    paths: [resource-paths.json, resource_paths.py, sadtalker_bridge.py, Toggle_Video_Rendering.bat, windows/StreamerBot.Native*/**, windows/voice/**, windows/installer/**, windows/Build-NativeInstaller.ps1, windows/Prepare-Voices.ps1, windows/NATIVE-PARITY.md, .github/workflows/native-installer.yml]
+    paths: [model.py, rvc_voice.py, original_voice_functions.py, tests/**, resource-paths.json, resource_paths.py, sadtalker_bridge.py, Toggle_Video_Rendering.bat, windows/StreamerBot.Native*/**, windows/voice/**, windows/installer/**, windows/Build-NativeInstaller.ps1, windows/Prepare-Voices.ps1, windows/NATIVE-PARITY.md, .github/workflows/native-installer.yml]
   workflow_dispatch:
 permissions:
   contents: read

@@ -53,10 +53,33 @@ internal sealed class FloatingWindow : Window
         _profile.Set(_geometryKey, $"{s.Width}x{s.Height}{p.X:+0;-0;+0}{p.Y:+0;-0;+0}");
         // Persist from the normal profile save/owner close path; never write during UI teardown.
     }
-    internal void Drag(bool resize = false)
+    internal static void AttachDrag(UIElement handle, Func<FloatingWindow> owner, bool resize = false)
     {
-        ReleaseCapture(); SendMessage(WinRT.Interop.WindowNative.GetWindowHandle(this), 0x00A1, resize ? 17 : 2, 0);
+        bool dragging = false;
+        PointInt32 startCursor = default, startPosition = default;
+        SizeInt32 startSize = default;
+        handle.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, e) =>
+        {
+            if (!e.GetCurrentPoint(handle).Properties.IsLeftButtonPressed || !GetCursorPos(out startCursor)) return;
+            var window = owner(); startPosition = window.AppWindow.Position; startSize = window.AppWindow.Size;
+            dragging = handle.CapturePointer(e.Pointer); e.Handled = dragging;
+        }), true);
+        handle.AddHandler(UIElement.PointerMovedEvent, new PointerEventHandler((_, e) =>
+        {
+            if (!dragging || !GetCursorPos(out var cursor)) return;
+            var window = owner(); var dx = cursor.X - startCursor.X; var dy = cursor.Y - startCursor.Y;
+            if (resize) window.AppWindow.Resize(new SizeInt32(Math.Max(360, startSize.Width + dx), Math.Max(260, startSize.Height + dy)));
+            else window.AppWindow.Move(new PointInt32(startPosition.X + dx, startPosition.Y + dy));
+            e.Handled = true;
+        }), true);
+        handle.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler((_, e) =>
+        {
+            if (!dragging) return;
+            dragging = false; handle.ReleasePointerCapture(e.Pointer); owner().Remember(); e.Handled = true;
+        }), true);
+        handle.PointerCaptureLost += (_, _) => { if (dragging) { dragging = false; owner().Remember(); } };
     }
+    [DllImport("user32.dll")] private static extern bool GetCursorPos(out PointInt32 point);
     private bool _ghost;
     internal void ToggleGhost()
     {
@@ -71,8 +94,6 @@ internal sealed class FloatingWindow : Window
         SetWindowLong(hwnd, -20, GetWindowLong(hwnd, -20) | 0x00080000);
         SetLayeredWindowAttributes(hwnd, 0, (byte)(Math.Clamp(opacity, 0.1, 1) * 255), 2);
     }
-    [DllImport("user32.dll")] private static extern bool ReleaseCapture();
-    [DllImport("user32.dll")] private static extern nint SendMessage(nint hwnd, uint message, nint wparam, nint lparam);
     [DllImport("user32.dll")] private static extern int GetWindowLong(nint hwnd, int index);
     [DllImport("user32.dll")] private static extern int SetWindowLong(nint hwnd, int index, int value);
     [DllImport("user32.dll")] private static extern bool SetLayeredWindowAttributes(nint hwnd, uint color, byte alpha, uint flags);

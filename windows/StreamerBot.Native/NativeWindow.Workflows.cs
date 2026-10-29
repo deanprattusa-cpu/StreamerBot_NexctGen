@@ -137,8 +137,11 @@ internal sealed partial class NativeWindow
         var grid = new Grid { Margin = new Thickness(10), RowSpacing = 8 };
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); grid.RowDefinitions.Add(new RowDefinition()); grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         var title = new TextBlock { Text = "≡ LIVE CHAT — drag to move", Foreground = Color(255, 170, 0), VerticalAlignment = VerticalAlignment.Center };
-        title.PointerPressed += (_, e) => { if (e.GetCurrentPoint(title).Properties.IsLeftButtonPressed && _toolWindows.TryGetValue("chat", out var window)) { e.Handled = true; window.Drag(); } };
-        grid.Children.Add(Row(title, Button("×", () => { _toolWindows["chat"].Hide(); return Task.CompletedTask; })));
+        var header = new Grid { ColumnSpacing = 8 }; header.ColumnDefinitions.Add(new ColumnDefinition()); header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        var dragArea = new Border { Name = "OverlayDragHandle", Background = Color(30, 30, 30), Padding = new Thickness(8), Child = title };
+        FloatingWindow.AttachDrag(dragArea, () => _toolWindows["chat"]);
+        header.Children.Add(dragArea);
+        var close = Button("×", () => { _toolWindows["chat"].Hide(); return Task.CompletedTask; }); Grid.SetColumn(close, 1); header.Children.Add(close); grid.Children.Add(header);
         grid.Children.Add(_chatList.AtRow(1));
         _hideBots.IsChecked = _profile.Flag("hide_bot_chat", true); _voiceOnly.IsChecked = _profile.Flag("chat_list_voice_only");
         _hideBots.Checked += (_, _) => { _profile.Set("hide_bot_chat", true); RefreshChatList(); }; _hideBots.Unchecked += (_, _) => { _profile.Set("hide_bot_chat", false); RefreshChatList(); };
@@ -159,8 +162,8 @@ internal sealed partial class NativeWindow
             if (e.Key == VirtualKey.Enter && !shift) { e.Handled = true; Run(SendChatDraftAsync); }
         };
         _chatList.DoubleTapped += (_, _) => Run(EditSelectedChatAsync);
-        var grip = new TextBlock { Text = "◢", HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, FontSize = 20 };
-        grip.PointerPressed += (_, e) => { if (e.GetCurrentPoint(grip).Properties.IsLeftButtonPressed) { e.Handled = true; _toolWindows["chat"].Drag(resize: true); } };
+        var grip = new TextBlock { Name = "OverlayResizeGrip", Text = "◢", HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom, FontSize = 20 };
+        FloatingWindow.AttachDrag(grip, () => _toolWindows["chat"], resize: true);
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); grid.Children.Add(grip.AtRow(4));
         return grid;
     }
@@ -332,6 +335,7 @@ internal sealed partial class NativeWindow
         _chat.Focus(FocusState.Programmatic); await HandleHotkeyAsync("hk_guide"); await Task.Delay(200);
         var guide = _toolWindows["shortcuts"];
         if (!guide.IsShown || guide.AppWindow.Presenter is not OverlappedPresenter { IsAlwaysOnTop: true }) throw new IOException("Keyboard Shortcuts did not open as a topmost window.");
+        await SmokeOverlayDragAsync("shortcuts");
         await CaptureWindowAsync(guide.Root, "shortcuts-preview.png");
         guide.ToggleGhost(); guide.ToggleGhost(); ShowShortcutGuide(); if (guide.IsShown) throw new IOException("Keyboard Shortcuts did not toggle closed.");
         ShowShortcutGuide(); if (!guide.IsShown) throw new IOException("Keyboard Shortcuts did not reopen."); guide.Hide();
@@ -341,6 +345,8 @@ internal sealed partial class NativeWindow
         ShowChatWindow(); await Task.Delay(300);
         var chat = _toolWindows["chat"];
         if (chat.AppWindow.Presenter is not OverlappedPresenter { IsAlwaysOnTop: true } || _chatList.Items.Count == 0) throw new IOException("Detached chat window did not load.");
+        await SmokeOverlayDragAsync("chat");
+        await File.WriteAllTextAsync(Path.Combine(Program.DataRoot, "overlay-drag-ready.txt"), "Chat/shortcuts drag, hide/reopen position, chat resize passed using Windows mouse input.");
         await CaptureWindowAsync(chat.Root, "chat-preview.png"); ShowChatWindow(toggle: true);
         if (chat.IsShown) throw new IOException("Chat hotkey toggle did not hide the window.");
         ShowChatWindow(toggle: true); if (!chat.IsShown) throw new IOException("Chat hotkey toggle did not reopen the window."); chat.Hide();

@@ -95,6 +95,7 @@ internal sealed partial class NativeWindow : Window
                 timer.Tick += async (_, _) =>
                 {
                     timer.Stop();
+                    await SmokeKeyboardAsync();
                     await SmokeOriginalWorkflowsAsync();
                     if (_root.ActualWidth > 0 && _root.ActualHeight > 0) File.WriteAllText(Path.Combine(Program.DataRoot, "smoke-ready.txt"), "Native WinUI window loaded and laid out.");
                     try
@@ -107,6 +108,11 @@ internal sealed partial class NativeWindow : Window
                         encoder.SetPixelData(Windows.Graphics.Imaging.BitmapPixelFormat.Bgra8, Windows.Graphics.Imaging.BitmapAlphaMode.Premultiplied, (uint)bitmap.PixelWidth, (uint)bitmap.PixelHeight, 96, 96, bytes); await encoder.FlushAsync();
                     }
                     catch (Exception error) { File.WriteAllText(Path.Combine(Program.DataRoot, "screenshot-status.txt"), error.GetType().Name); }
+                    var selectedCache = Path.Combine(Program.DataRoot, "selected voice cache");
+                    _profile.Set("avatar_path", Path.Combine(Program.DataRoot, "unavailable-old-avatar.png")); _profile.Save();
+                    if (!await PathSettingsDialog.ShowAsync(this, _root.XamlRoot, _profile, selectedCache)) throw new IOException("Paths Save did not complete.");
+                    if (ResourcePaths.VoiceCache(new Profile(_profile.StoragePath), Program.DataRoot) != selectedCache) throw new IOException("Selected voice cache was not persisted.");
+                    await ReloadVoiceAsync();
                     await PathSettingsDialog.ShowAsync(this, _root.XamlRoot, _profile);
                     if (!File.Exists(Path.Combine(Program.DataRoot, "paths-ready.txt"))) throw new IOException("Native paths dialog did not lay out.");
                     var videoWindow = new AvatarVideoWindow(); videoWindow.Activate(); videoWindow.Close();
@@ -216,6 +222,8 @@ internal sealed partial class NativeWindow : Window
         Command(audio, "Test TTS voice", () => SpeakAsync("Hello! Your stream voice is ready to test.", "test", _lifetime.Token)); Command(audio, "Record / transcribe microphone", RecordAsync);
         Command(audio, "Install / repair voice engines", () => PrepareVoicesAsync(false)); Command(audio, "Repair CUDA voice runtime", () => PrepareVoicesAsync(true)); Command(audio, "GPU diagnostics", GpuAsync);
         Command(audio, "Typecast login", () => VoiceLoginAsync("typecast")); Command(audio, "ElevenLabs Ghost login", () => VoiceLoginAsync("elevenlabs_ghost"));
+        var help = Menu("Help");
+        Command(help, "Check for updates…", CheckUpdatesAsync);
         return bar;
     }
     private UIElement BuildSettings()
@@ -315,7 +323,7 @@ internal sealed partial class NativeWindow : Window
         _hotkeys?.Dispose(); _hotkeys = null;
         if (!_profile.Flag("hotkeys_active", true)) return;
         _hotkeys = new NativeHotkeys(_profile, key => DispatcherQueue.TryEnqueue(() => Run(() => HandleHotkeyAsync(key))));
-        WriteLog($"Registered {_hotkeys.Count} global shortcuts."); foreach (var problem in _hotkeys.Problems) WriteLog(problem);
+        WriteLog($"Observing {_hotkeys.Count} shortcuts; keyboard input passes through normally."); foreach (var problem in _hotkeys.Problems) WriteLog(problem);
     }
     private async Task HandleHotkeyAsync(string key)
     {

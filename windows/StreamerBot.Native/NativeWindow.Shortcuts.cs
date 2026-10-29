@@ -22,8 +22,8 @@ internal sealed partial class NativeWindow
         var grid = new Grid { Margin = new Thickness(12), RowSpacing = 12 };
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); grid.RowDefinitions.Add(new RowDefinition()); grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         var header = new Grid(); header.ColumnDefinitions.Add(new ColumnDefinition()); header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var title = new TextBlock { Text = "Keyboard Shortcuts", FontSize = 18, FontWeight = Microsoft.UI.Text.FontWeights.Bold, VerticalAlignment = VerticalAlignment.Center };
-        title.PointerPressed += (_, e) => { if (e.GetCurrentPoint(title).Properties.IsLeftButtonPressed) { e.Handled = true; _toolWindows["shortcuts"].Drag(); } };
+        var title = new TextBlock { Name = "OverlayDragHandle", Text = "Keyboard Shortcuts", FontSize = 18, FontWeight = Microsoft.UI.Text.FontWeights.Bold, VerticalAlignment = VerticalAlignment.Center };
+        FloatingWindow.AttachDrag(title, () => _toolWindows["shortcuts"]);
         header.Children.Add(title); var close = Button("×", () => { _toolWindows["shortcuts"].Hide(); return Task.CompletedTask; }); Grid.SetColumn(close, 1); header.Children.Add(close); grid.Children.Add(header);
         var sections = new StackPanel { Spacing = 22 };
         var groups = new (string Title, string[] Keys)[]
@@ -53,7 +53,7 @@ internal sealed partial class NativeWindow
         }
         grid.Children.Add(new ScrollViewer { Content = sections, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled }.AtRow(1));
         var grip = new TextBlock { Text = "◢", HorizontalAlignment = HorizontalAlignment.Right };
-        grip.PointerPressed += (_, e) => { if (e.GetCurrentPoint(grip).Properties.IsLeftButtonPressed) { e.Handled = true; _toolWindows["shortcuts"].Drag(resize: true); } };
+        FloatingWindow.AttachDrag(grip, () => _toolWindows["shortcuts"], resize: true);
         grid.Children.Add(grip.AtRow(2)); return grid;
     }
 }

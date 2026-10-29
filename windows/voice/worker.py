@@ -51,6 +51,20 @@ def ghost_engine(engine):
     return Bridge()
 
 
+@contextlib.contextmanager
+def native_cache_capture(model, target, captured):
+    """Keep legacy voice adapters inside the native user's selected cache root."""
+    previous_cache = model._handle_tts_cache
+    previous_play = model.play_wav_winsound
+    model._handle_tts_cache = lambda *a, **k: (False, str(target), str(target.with_suffix(".txt")))
+    model.play_wav_winsound = lambda path, *a, **k: captured.append(Path(path))
+    try:
+        yield
+    finally:
+        model._handle_tts_cache = previous_cache
+        model.play_wav_winsound = previous_play
+
+
 def synthesize(request, data):
     global _kokoro
     profile = request.get("profile", {})
@@ -63,7 +77,7 @@ def synthesize(request, data):
     cache.mkdir(parents=True, exist_ok=True)
     voice_settings = {k: v for k, v in profile.items() if k.startswith(engine + "_") or k in {"global_model_path"}}
     identity = json.dumps({"engine": engine, "text": text, "voice": voice_settings, "category": category}, sort_keys=True)
-    target = cache / (hashlib.sha256(identity.encode()).hexdigest() + (".mp3" if engine in {"edge", "elevenlabs"} else ".wav"))
+    target = cache / (hashlib.sha256(identity.encode()).hexdigest() + (".mp3" if engine == "edge" else ".wav"))
     if target.exists() and not request.get("fresh", False):
         return {"audio": str(target), "cached": True}
     if request.get("cache_only"):
@@ -114,30 +128,31 @@ def synthesize(request, data):
             if hasattr(model, "AudioSegment"):
                 model.AudioSegment.converter = ffmpeg
         captured = []
-        model.play_wav_winsound = lambda path, *a, **k: captured.append(Path(path))
         common = dict(volume=1.0, category=category, game_name=str(profile.get("game_name", "General")), channel_name=str(profile.get("channel_name", "DefaultChannel")), force_fresh=bool(request.get("fresh", False)))
-        if engine == "fish":
-            model.play_fish_speech_tts_audio(text, profile.get("fish_audio_path", ""), profile.get("fish_text_path", ""), **common)
-        elif engine == "voicebox":
-            model.play_voicebox_tts_audio(text, profile.get("voicebox_url", "http://127.0.0.1:17493"), profile.get("voicebox_voice", "default"), **common)
-        elif engine == "tiktok":
-            os.environ["TIKTOK_SESSION_ID"] = str(profile.get("tiktok_session_id", ""))
-            model.play_tiktok_tts_audio(text, profile.get("tiktok_voice", "en_us_002"), None, **common)
-        elif engine == "kokoro":
-            if _kokoro is None:
-                from kokoro import KPipeline
-                _kokoro = KPipeline(lang_code=str(profile.get("kokoro_voice", "am_adam"))[0])
-            model.play_kokoro_tts_audio(text, None, _kokoro, profile.get("kokoro_voice", "am_adam"), **common)
-        elif engine == "elevenlabs":
-            settings = dict(profile)
-            settings["elevenlabs_api_keys"] = profile.get("elevenlabs_keys", [])
-            model.StreamerBotModel.play_elevenlabs_tts_audio(types.SimpleNamespace(**settings), text, profile.get("elevenlabs_voice", "Default"), **common)
-        else:
-            raise WorkerError("Select a supported voice engine. Windows offline speech runs in the native app.")
-        source = next((p for p in reversed(captured) if p.is_file()), None)
-        if source is None:
-            raise RuntimeError("The voice engine produced no audio. Check its account, model paths, presets and dependencies.")
-        shutil.copyfile(source, target)
+        with native_cache_capture(model, target, captured):
+            if engine == "fish":
+                model.play_fish_speech_tts_audio(text, profile.get("fish_audio_path", ""), profile.get("fish_text_path", ""), **common)
+            elif engine == "voicebox":
+                model.play_voicebox_tts_audio(text, profile.get("voicebox_url", "http://127.0.0.1:17493"), profile.get("voicebox_voice", "default"), **common)
+            elif engine == "tiktok":
+                os.environ["TIKTOK_SESSION_ID"] = str(profile.get("tiktok_session_id", ""))
+                model.play_tiktok_tts_audio(text, profile.get("tiktok_voice", "en_us_002"), None, **common)
+            elif engine == "kokoro":
+                if _kokoro is None:
+                    from kokoro import KPipeline
+                    _kokoro = KPipeline(lang_code=str(profile.get("kokoro_voice", "am_adam"))[0])
+                model.play_kokoro_tts_audio(text, None, _kokoro, profile.get("kokoro_voice", "am_adam"), **common)
+            elif engine == "elevenlabs":
+                settings = dict(profile)
+                settings["elevenlabs_api_keys"] = profile.get("elevenlabs_keys", [])
+                model.StreamerBotModel.play_elevenlabs_tts_audio(types.SimpleNamespace(**settings), text, profile.get("elevenlabs_voice", "Default"), **common)
+            else:
+                raise WorkerError("Select a supported voice engine. Windows offline speech runs in the native app.")
+            source = next((p for p in reversed(captured) if p.is_file()), None)
+            if source is None:
+                raise RuntimeError("The voice engine produced no audio. Check its account, model paths, presets and dependencies.")
+            if source.resolve() != target:
+                shutil.copyfile(source, target)
     if not target.is_file() or target.stat().st_size < 44:
         raise RuntimeError("Voice engine returned an empty audio file.")
     return {"audio": str(target), "cached": False}

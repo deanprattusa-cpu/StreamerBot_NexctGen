@@ -88,6 +88,8 @@ try
         try { await renderer.RenderAsync(videoProfile, selectedAudio, default); throw new Exception("failed renderer accepted"); }
         catch (InvalidOperationException error) { Check(error.Message.Contains("code 9") && error.Message.Contains("renderer.log"), "native renderer exposes exit failure and detailed log path"); }
     }
+    await UpdateChecks.Run(root, Check);
+    await KeyboardPathChecks.Run(root, Check);
     await OriginalWorkflowChecks.Run(root, Check);
     Console.WriteLine($"{passes} checks passed");
 }

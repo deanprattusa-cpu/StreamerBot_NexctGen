@@ -25,7 +25,7 @@ try {
     Get-ChildItem $SmokeRoot | Format-Table Name,Length
     Get-Content (Join-Path $SmokeRoot 'stderr.txt') -ErrorAction SilentlyContinue
     Get-WinEvent -FilterHashtable @{ LogName='Application'; StartTime=(Get-Date).AddMinutes(-2) } -ErrorAction SilentlyContinue | Where-Object { $_.ProviderName -in @('Application Error','.NET Runtime','Windows Error Reporting') } | Select-Object TimeCreated, ProviderName, Message | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $SmokeRoot 'windows-events.json')
-    if ($Smoke.ExitCode -ne 0 -or -not (Test-Path (Join-Path $SmokeRoot 'smoke-ready.txt')) -or -not (Test-Path (Join-Path $SmokeRoot 'original-workflows-ready.txt'))) { throw 'Native UI did not load and lay out successfully' }
+    if ($Smoke.ExitCode -ne 0 -or -not (Test-Path (Join-Path $SmokeRoot 'smoke-ready.txt')) -or -not (Test-Path (Join-Path $SmokeRoot 'original-workflows-ready.txt')) -or -not (Test-Path (Join-Path $SmokeRoot 'keyboard-ready.txt')) -or -not (Test-Path (Join-Path $SmokeRoot 'overlay-drag-ready.txt')) -or -not (Test-Path (Join-Path $SmokeRoot 'paths-ready.txt'))) { throw 'Native UI did not load and lay out successfully' }
     Write-Host 'Native WinUI startup / layout / shutdown smoke test passed.'
     @'
 # Build validation
@@ -38,28 +38,56 @@ See NATIVE-PARITY.md for incomplete original workflows. No user secrets or model
     Invoke-Checked 'python' @((Join-Path $PSScriptRoot 'installer/stage_native.py'),(Join-Path $Build 'published'),(Join-Path $Build 'payload'))
     $Installer = Join-Path $OutputDirectory 'StreamerBot-Native-Setup.exe'
     Invoke-Checked $MakeNsis @('/V2',('/DPAYLOAD=' + (Join-Path $Build 'payload')),('/DINSTALLER_OUT=' + $Installer),('/DUNINSTALL_INCLUDE=' + (Join-Path $Build 'uninstall_payload.nsh')),(Join-Path $PSScriptRoot 'installer/StreamerBot.Native.nsi'))
+    $Update = Join-Path $OutputDirectory 'StreamerBot-Native-Update.exe'
+    Invoke-Checked $MakeNsis @('/V2','/DUPDATE_ONLY',('/DPAYLOAD=' + (Join-Path $Build 'payload')),('/DINSTALLER_OUT=' + $Update),('/DUNINSTALL_INCLUDE=' + (Join-Path $Build 'uninstall_payload.nsh')),(Join-Path $PSScriptRoot 'installer/StreamerBot.Native.nsi'))
     # Only disposable CI runners may install/uninstall during a build.
     if ($env:GITHUB_ACTIONS -eq 'true') {
     $Installed = Join-Path $env:LOCALAPPDATA 'Programs/StreamerBotNative'
     if ((Test-Path $Installed) -or (Test-Path 'HKCU:/Software/Microsoft/Windows/CurrentVersion/Uninstall/StreamerBotNative')) { throw 'Installer verification requires a clean disposable CI user' }
+    $FreshUpdate = Start-Process -FilePath $Update -ArgumentList '/S' -PassThru -Wait
+    if ($FreshUpdate.ExitCode -eq 0 -or (Test-Path $Installed)) { throw 'Update EXE must require an existing installation' }
     $InstallProcess = Start-Process -FilePath $Installer -ArgumentList '/S' -PassThru -Wait
     if ($InstallProcess.ExitCode -ne 0 -or -not (Test-Path (Join-Path $Installed 'StreamerBot.Native.exe'))) { throw 'Installer did not install the native executable' }
+    $ActualData = Join-Path $env:LOCALAPPDATA 'StreamerBotNative'
+    New-Item -ItemType Directory -Path $ActualData -Force | Out-Null
+    $PreservedProfile = Join-Path $ActualData 'profile.json'
+    $PreservedCache = Join-Path $ActualData 'selected cache'
+    New-Item -ItemType Directory -Path $PreservedCache -Force | Out-Null
+    @{ voice_cache_path=$PreservedCache; future_setting=@{ retained=$true } } | ConvertTo-Json | Set-Content $PreservedProfile
+    $ProfileHash = (Get-FileHash $PreservedProfile).Hash
+    $CacheFixture = Join-Path $PreservedCache 'keep.wav'
+    'Synthetic cache fixture' | Set-Content $CacheFixture
+    $CacheHash = (Get-FileHash $CacheFixture).Hash
+    $AddedFile = Join-Path $Installed 'user-added-test.txt'
+    'Synthetic user-added file; update/uninstall must preserve it.' | Set-Content -LiteralPath $AddedFile
+    $LockedExe = [IO.File]::Open((Join-Path $Installed 'StreamerBot.Native.exe'), 'Open', 'Read', 'Read')
+    try {
+        $BlockedUpdate = Start-Process -FilePath $Update -ArgumentList '/S' -PassThru -Wait
+        if ($BlockedUpdate.ExitCode -eq 0) { throw 'Update did not reject a locked running-app executable' }
+    } finally { $LockedExe.Dispose() }
+    $CoreDll = Join-Path $Installed 'StreamerBot.Native.Core.dll'
+    $ExpectedCoreHash = (Get-FileHash $CoreDll).Hash
+    'Synthetic old payload to be replaced' | Set-Content $CoreDll
+    Set-ItemProperty 'HKCU:/Software/Microsoft/Windows/CurrentVersion/Uninstall/StreamerBotNative' -Name DisplayVersion -Value '0.3.0'
+    $UpdateProcess = Start-Process -FilePath $Update -ArgumentList '/S' -PassThru -Wait
+    if ($UpdateProcess.ExitCode -ne 0 -or (Get-FileHash $CoreDll).Hash -ne $ExpectedCoreHash -or (Get-FileHash $PreservedProfile).Hash -ne $ProfileHash -or (Get-FileHash $CacheFixture).Hash -ne $CacheHash -or -not (Test-Path $AddedFile)) { throw 'Update failed payload replacement or settings/cache/user-file retention' }
+    if ((Get-ItemProperty 'HKCU:/Software/Microsoft/Windows/CurrentVersion/Uninstall/StreamerBotNative').DisplayVersion -ne '0.3.1') { throw 'Update version was not recorded' }
+    Write-Host 'Actual update EXE / locked-app protection / profile-cache retention checks passed.'
     $InstalledSmoke = Join-Path $SmokeRoot 'installed-app'
     New-Item -ItemType Directory -Path $InstalledSmoke -Force | Out-Null
     $InstalledProcess = Start-Process -FilePath (Join-Path $Installed 'StreamerBot.Native.exe') -ArgumentList @('--smoke-test', ('"' + $InstalledSmoke + '"')) -PassThru
     if (-not $InstalledProcess.WaitForExit(30000)) { $InstalledProcess.Kill(); throw 'Installed native app smoke test timed out' }
-    if ($InstalledProcess.ExitCode -ne 0 -or -not (Test-Path (Join-Path $InstalledSmoke 'smoke-ready.txt')) -or -not (Test-Path (Join-Path $InstalledSmoke 'original-workflows-ready.txt'))) { throw 'Installed native app did not start successfully' }
-    $AddedFile = Join-Path $Installed 'user-added-test.txt'
-    'Synthetic user-added file; uninstall must preserve it.' | Set-Content -LiteralPath $AddedFile
+    if ($InstalledProcess.ExitCode -ne 0 -or -not (Test-Path (Join-Path $InstalledSmoke 'smoke-ready.txt')) -or -not (Test-Path (Join-Path $InstalledSmoke 'original-workflows-ready.txt')) -or -not (Test-Path (Join-Path $InstalledSmoke 'keyboard-ready.txt')) -or -not (Test-Path (Join-Path $InstalledSmoke 'overlay-drag-ready.txt')) -or -not (Test-Path (Join-Path $InstalledSmoke 'paths-ready.txt'))) { throw 'Installed native app did not start successfully' }
     $UninstallProcess = Start-Process -FilePath (Join-Path $Installed 'Uninstall.exe') -ArgumentList '/S' -PassThru -Wait
     $Deadline = (Get-Date).AddSeconds(30)
     while ((Test-Path (Join-Path $Installed 'StreamerBot.Native.exe')) -and (Get-Date) -lt $Deadline) { Start-Sleep -Milliseconds 250 }
-    if ((Test-Path (Join-Path $Installed 'StreamerBot.Native.exe')) -or -not (Test-Path $AddedFile) -or -not (Test-Path (Join-Path $InstalledSmoke 'profile.json'))) { throw 'Uninstall failed payload removal or user-data retention' }
+    if ((Test-Path (Join-Path $Installed 'StreamerBot.Native.exe')) -or -not (Test-Path $AddedFile) -or -not (Test-Path (Join-Path $InstalledSmoke 'profile.json')) -or (Get-FileHash $PreservedProfile).Hash -ne $ProfileHash -or (Get-FileHash $CacheFixture).Hash -ne $CacheHash) { throw 'Uninstall failed payload removal or user-data retention' }
     Remove-Item -LiteralPath $AddedFile -Force
     Write-Host 'Actual installer / installed native app / uninstall data-retention checks passed.'
     }
     $Hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $Installer).Hash.ToLowerInvariant()
-    ($Hash + '  StreamerBot-Native-Setup.exe') | Set-Content (Join-Path $OutputDirectory 'SHA256SUMS.txt') -Encoding ASCII
+    $UpdateHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $Update).Hash.ToLowerInvariant()
+    @(($Hash + '  StreamerBot-Native-Setup.exe'), ($UpdateHash + '  StreamerBot-Native-Update.exe')) | Set-Content (Join-Path $OutputDirectory 'SHA256SUMS.txt') -Encoding ASCII
     Copy-Item (Join-Path $Build 'payload/PAYLOAD-SHA256.json') $OutputDirectory
     Copy-Item (Join-Path $PSScriptRoot 'NATIVE-PARITY.md') $OutputDirectory
     Write-Host "Built $Installer"

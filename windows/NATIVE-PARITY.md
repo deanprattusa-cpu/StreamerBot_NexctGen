@@ -1,4 +1,4 @@
-# StreamerBot Native 0.3 — migration preview
+# StreamerBot Native 0.3.1 — migration preview
 
 This is a new C#/.NET 10 and WinUI 3 Windows desktop application. The main UI,
 settings editor, global hotkeys, AI requests, session logic and YouTube REST
@@ -33,6 +33,31 @@ For YouTube, File → Import YouTube token accepts the original authorized-user 
 with client_id, client_secret and refresh_token. The account needs an active live
 broadcast. Credentials → Import Google JSON / Authorize channel accepts the original Google Desktop app client-secret JSON and opens account consent in the system browser. It uses a local loopback callback and PKCE; real account authorization still needs user testing. Simulate
 never posts messages. Provider availability, quotas and model access are external.
+
+## Updates, keyboard and saved paths in 0.3.1
+
+Existing installations: close StreamerBot completely and run
+`StreamerBot-Native-Update.exe`. It updates the installed application and preserves
+`%LOCALAPPDATA%\StreamerBotNative`, selected caches/models and user-added files.
+The update requires an existing installation. The installer refuses to overwrite
+a locked/running executable before changing files. No uninstall is needed.
+
+Help → Check for updates reads this repository's latest published stable GitHub
+release. Confirm Download and update to fetch the update EXE, verify its SHA-256,
+close the app, apply the update silently and reopen it. The first update from
+0.3.0 must be applied manually because that build has no update menu. Releases
+must include `StreamerBot-Native-Update.exe` and `SHA256SUMS.txt`.
+
+Shortcuts now observe and forward keyboard events. Bare-letter media bindings
+such as E remain available to other apps and text fields; suspension does not
+reserve the key. Closing/rebinding stops and releases the listener.
+
+Paths saves edited selections without requiring unrelated old imported model
+paths to exist. Invalid newly selected inputs still prevent saving. Cache
+selections survive restart, and legacy voice adapters write directly into the
+selected native cache rather than first writing into their own default cache.
+Chat and shortcuts use captured pointer dragging and resizing; statistics drag
+uses the same handler. Saved overlay positions survive hiding/reopening.
 
 ## Original UI and channel workflow restored in 0.3
 
