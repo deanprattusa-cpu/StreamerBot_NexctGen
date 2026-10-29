@@ -31,6 +31,10 @@ uninstall retention checks before an updated installer is verified. Read the
 exact commit's workflow result and the `StreamerBot-Native-Windows-x64` artifact;
 do not substitute the older installer linked in the historical YAML.
 
+The continuation build at `c1348123148734ad8864aef788bd9985e2f6ffd6` has now passed
+those Windows gates. See [windows/BUILD-VALIDATION.md](windows/BUILD-VALIDATION.md)
+for the exact run, download and checksum. Real GPU inference remains unverified.
+
 ## Packages
 
 - `StreamerBot-Native-Source.zip`: frozen source backup; not an installer.
