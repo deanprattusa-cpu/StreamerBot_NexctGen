@@ -49,7 +49,7 @@ internal sealed partial class NativeWindow : Window
     private CancellationTokenSource _playback = new();
     public NativeWindow()
     {
-        Title = "StreamerBot Native — Preview";
+        Title = "Streamer AI Bot Control Panel — Native";
         AppWindow.Resize(new SizeInt32(1400, 950));
         _profile = new Profile(Path.Combine(Program.DataRoot, "profile.json"));
         _ai = new AiClient(_http);
@@ -61,7 +61,7 @@ internal sealed partial class NativeWindow : Window
         _controller.Speak += SpeakAsync;
         _controller.Review += ReviewAsync;
         _root.RequestedTheme = ElementTheme.Dark;
-        _root.Background = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 25, 25, 25));
+        _root.Background = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 0, 0, 0));
         _root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         _root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         _root.RowDefinitions.Add(new RowDefinition());

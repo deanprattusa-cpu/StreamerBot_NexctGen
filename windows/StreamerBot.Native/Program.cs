@@ -53,6 +53,8 @@ internal sealed class NativeApplication : Application, IXamlMetadataProvider
             var resources = new ResourceDictionary();
             Resources = resources;
             resources.MergedDictionaries.Add(new Microsoft.UI.Xaml.Controls.XamlControlsResources());
+            resources["ControlCornerRadius"] = new CornerRadius(0);
+            resources["OverlayCornerRadius"] = new CornerRadius(0);
             Program.Trace("OnLaunched: resources loaded");
             LaunchWindow();
         }

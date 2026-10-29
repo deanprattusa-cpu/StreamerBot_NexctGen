@@ -51,7 +51,16 @@ internal sealed partial class NativeWindow
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star), MinHeight = 100 });
         grid.Children.Add(Row(new TextBlock { Text = "LIVE CHAT FEED", Foreground = Color(0, 230, 255), FontWeight = Microsoft.UI.Text.FontWeights.Bold }, Button("Clear Chat", () => { _chat.Items.Clear(); _messages.Clear(); RefreshChatList(); return Task.CompletedTask; })));
         _chat.Background = Color(0, 0, 0); grid.Children.Add(_chat.AtRow(1));
-        grid.Children.Add(new TextBlock { Text = "System Log", Foreground = Color(0, 230, 255) }.AtRow(2));
+        var divider = new Microsoft.UI.Xaml.Controls.Primitives.Thumb { Height = 7, Background = Color(80, 80, 80), HorizontalAlignment = HorizontalAlignment.Stretch };
+        divider.DragDelta += (_, e) =>
+        {
+            var available = grid.RowDefinitions[1].ActualHeight + grid.RowDefinitions[3].ActualHeight;
+            if (available <= 200) return;
+            var chatHeight = Math.Clamp(grid.RowDefinitions[1].ActualHeight + e.VerticalChange, 100, available - 100);
+            grid.RowDefinitions[1].Height = new GridLength(chatHeight, GridUnitType.Star);
+            grid.RowDefinitions[3].Height = new GridLength(available - chatHeight, GridUnitType.Star);
+        };
+        grid.Children.Add(new StackPanel { Spacing = 6, Children = { divider, new TextBlock { Text = "System Log", Foreground = Color(0, 230, 255) } } }.AtRow(2));
         _log.Background = Color(17, 17, 17); _log.Foreground = Color(0, 255, 0); _log.FontFamily = new FontFamily("Consolas"); _log.FontSize = 12;
         grid.Children.Add(_log.AtRow(3)); return grid;
     }
@@ -292,6 +301,7 @@ internal sealed partial class NativeWindow
     }
     private static string HotkeyLabel(string key) => key switch
     {
+        "hk_react_1" => "1. Uh-oh!", "hk_react_2" => "2. Surprise / Gasp", "hk_react_3" => "3. Grunt / Effort", "hk_react_4" => "4. Attack / Thrust", "hk_react_5" => "5. Hit / Pain", "hk_react_6" => "6. Laugh", "hk_react_7" => "7. Sigh / Annoyed", "hk_react_8" => "8. Scared", "hk_react_9" => "9. Hype / Yes!", "hk_react_10" => "10. Confused", "hk_react_11" => "11. Nice / Impressed", "hk_react_12" => "12. Oof / Cringe",
         "hk_idle" => "Idle Chat", "hk_thanks" => "Thanks / Greet", "hk_question" => "Game Question", "hk_help" => "Ask for Help", "hk_death" => "Death / Rage", "hk_likes_thanks" => "Thanks for Likes", "hk_brb" => "BRB / AFK", "hk_tech_issue" => "Tech Issue", "hk_talk_viewers" => "Talk Trends", "hk_attack" => "Attack Callout", "hk_puzzle" => "Puzzle Solved", "hk_boss_win" => "Boss Defeated", "hk_clip_that" => "Clip That!", "hk_panic" => "Panic/Scream", "hk_shoutout_users" => "Shoutout Users", "hk_guide" => "Keyboard Shortcuts", "hk_open_context_window" => "Game Context", "hk_guide_ghost" => "Toggle Guide Ghost", "hk_stats_ghost" => "Toggle Stats Ghost",
         _ => System.Globalization.CultureInfo.InvariantCulture.TextInfo.ToTitleCase(key.Replace("hk_", "").Replace('_', ' '))
     };
