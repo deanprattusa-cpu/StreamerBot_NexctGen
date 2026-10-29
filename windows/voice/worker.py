@@ -101,7 +101,10 @@ def synthesize(request, data):
         bridge = ghost_engine(engine)
         bridge.play_ghost_audio(text)
         return {"handled_by_engine": True, "queued": True}
-    elif engine in {"rvc", "soprano"}:
+    elif engine == "rvc":
+        from rvc_voice import synthesize as rvc_synthesize
+        rvc_synthesize(text, target, profile.get("rvc_model_path", ""), profile.get("rvc_index_path", ""), profile.get("rvc_pitch", 0))
+    elif engine == "soprano":
         raise WorkerError(f"{engine}: the original checkout does not initialize a usable local engine. Its settings are retained; native integration remains incomplete.")
     else:
         model = legacy_model()

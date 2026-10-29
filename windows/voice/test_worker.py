@@ -45,10 +45,21 @@ class WorkerChecks(unittest.TestCase):
                 worker.handle({"protocol": 1, "operation": "transcribe", "audio": __file__}, Path(directory))
 
     def test_incomplete_engines_are_explicit(self):
-        for engine in ("rvc", "soprano"):
+        for engine in ("soprano",):
             with tempfile.TemporaryDirectory() as directory:
                 with self.assertRaisesRegex(worker.WorkerError, "incomplete"):
                     worker.synthesize({"text": "test", "profile": {"tts_mode": engine}}, Path(directory))
+
+    def test_rvc_routes_selected_model_index_and_pitch(self):
+        calls = []
+        def synth(text, target, model, index, pitch):
+            calls.append((text, model, index, pitch))
+            Path(target).write_bytes(b"synthetic wav" * 8)
+        with tempfile.TemporaryDirectory() as directory, patch.dict(sys.modules, {"rvc_voice": types.SimpleNamespace(synthesize=synth)}):
+            profile = {"tts_mode": "rvc", "rvc_model_path": "selected.pth", "rvc_index_path": "selected.index", "rvc_pitch": -3}
+            result = worker.synthesize({"text": "hello", "profile": profile}, Path(directory))
+            self.assertTrue(Path(result["audio"]).is_file())
+            self.assertEqual(calls, [("hello", "selected.pth", "selected.index", -3)])
 
     def test_stdio_recovers_from_bad_json_without_echoing_input(self):
         with tempfile.TemporaryDirectory() as directory:

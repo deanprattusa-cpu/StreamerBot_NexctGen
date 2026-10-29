@@ -9,7 +9,7 @@ import shutil
 ROOT = Path(__file__).resolve().parents[2]
 VOICE_FILES = [
     "resource-paths.json", "resource_paths.py", "sadtalker_bridge.py", "Toggle_Video_Rendering.bat",
-    "model.py", "bark_fast.py", "typecast_bridge.py", "elevenlabs_ghost_bridge.py",
+    "model.py", "rvc_voice.py", "original_voice_functions.py", "bark_fast.py", "typecast_bridge.py", "elevenlabs_ghost_bridge.py",
     "setup_deps.py", "requirements.txt", "constraints.txt",
     "windows/voice/worker.py", "windows/Prepare-Voices.ps1", "windows/Portable-Runtime.ps1",
     "windows/portable-runtimes.json", "windows/prepare_original.py",

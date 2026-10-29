@@ -9,6 +9,8 @@ New-Item -ItemType Directory -Path $Build, $OutputDirectory -Force | Out-Null
 function Invoke-Checked { param([string]$Tool, [string[]]$Arguments) & $Tool @Arguments; if ($LASTEXITCODE -ne 0) { throw "$Tool failed with exit $LASTEXITCODE" } }
 try {
     Push-Location $Root
+    Invoke-Checked 'python' @('tests/test_rvc_voice.py','-v')
+    Invoke-Checked 'python' @('tests/test_original_voice_functions.py','-v')
     Invoke-Checked 'python' @('windows/voice/test_worker.py','-v')
     Invoke-Checked 'python' @('windows/voice/test_video_paths.py','-v')
     Invoke-Checked 'dotnet' @('run','--project','windows/StreamerBot.Native.Check','--',(Get-Command python).Source,(Join-Path $Root 'windows/voice/worker.py'))

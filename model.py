@@ -448,14 +448,17 @@ def play_tiktok_tts_audio(text, voice, device_id, volume=1.0, force_cache_file=N
         print(f"[TikTok Engine Error] {e}")
 
 
+from original_voice_functions import play_edge_tts_audio_gui, play_google_tts_audio_gui
+
+
 def play_rvc_tts_audio(text, device_id, model_path, index_path, pitch, volume=1.0, force_cache_file=None, category="generic", game_name="General", channel_name="DefaultChannel", force_fresh=False):
     try:
         model_basename = os.path.basename(model_path) if model_path else "default"
         handled, cache_file, cache_txt = _handle_tts_cache("rvc", text, f"{model_basename}_{pitch}", volume, force_cache_file, category, game_name, channel_name, force_fresh=force_fresh)
         if handled: return
 
-        if 'global_rvc_client' in globals():
-            global_rvc_client.infer(text, cache_file, model_path, index_path, pitch)
+        from rvc_voice import synthesize
+        synthesize(text, cache_file, model_path, index_path, pitch)
         
         if os.path.exists(cache_file):
             with open(cache_txt, "w", encoding="utf-8") as f: f.write(text)
@@ -473,7 +476,9 @@ def play_kokoro_tts_audio(text, device_id, pipeline, voice_name, volume=1.0, for
         handled, cache_file, cache_txt = _handle_tts_cache("kokoro", text, voice_name, volume, force_cache_file, category, game_name, channel_name, force_fresh=force_fresh)
         if handled: return
 
-        if not pipeline: return
+        if pipeline is None:
+            from kokoro import KPipeline
+            pipeline = KPipeline(lang_code=voice_name[0] if voice_name else 'a')
         if len(text) > 400: text = text[:400]
         if torch.cuda.is_available(): pipeline.model.to('cuda')
             
@@ -1024,7 +1029,7 @@ class StreamerBotModel(EventEmitter):
                     elif mode == "kokoro": play_kokoro_tts_audio(text, device_index, self.kokoro_pipeline, voice, vol, force_cache_file=force_cache_file, category=category, game_name=game_name, channel_name=channel_name, force_fresh=force_fresh)
                     elif mode == "soprano":
                         if self.soprano_loaded and self.soprano_model: play_soprano_tts_audio(self.soprano_model, text, device_index, voice, vol)
-                        else: play_windows_tts_audio(text, vol)
+                        else: print("[Soprano Error] No Soprano model loader is installed. Select a working engine; Windows speech is not Soprano.")
                     elif mode == "voicebox":
                         play_voicebox_tts_audio(text, getattr(self, 'voicebox_url', 'http://127.0.0.1:17493'), voice, vol, force_cache_file=force_cache_file, category=category, game_name=game_name, channel_name=channel_name, force_fresh=force_fresh)
                     elif mode == "bark_cloud":
