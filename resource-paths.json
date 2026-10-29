@@ -1,0 +1,144 @@
+[
+  {
+    "key": "global_model_path",
+    "label": "AI models and model-download caches",
+    "kind": "folder"
+  },
+  {
+    "key": "voice_python_path",
+    "label": "Voice Python executable (blank: private runtime)",
+    "kind": "file",
+    "extensions": [
+      ".exe"
+    ],
+    "nativeOnly": true
+  },
+  {
+    "key": "native_runtime_path",
+    "label": "Private runtime and dependency downloads",
+    "kind": "output",
+    "nativeOnly": true
+  },
+  {
+    "key": "voice_cache_path",
+    "label": "Generated voice cache",
+    "kind": "output",
+    "nativeOnly": true
+  },
+  {
+    "key": "fish_audio_path",
+    "label": "Fish reference audio",
+    "kind": "file",
+    "extensions": [
+      ".wav",
+      ".mp3",
+      ".flac"
+    ]
+  },
+  {
+    "key": "fish_text_path",
+    "label": "Fish reference transcript",
+    "kind": "file",
+    "extensions": [
+      ".txt"
+    ]
+  },
+  {
+    "key": "rvc_model_path",
+    "label": "RVC model",
+    "kind": "file",
+    "extensions": [
+      ".pth",
+      ".onnx"
+    ]
+  },
+  {
+    "key": "rvc_index_path",
+    "label": "RVC index",
+    "kind": "file",
+    "extensions": [
+      ".index"
+    ]
+  },
+  {
+    "key": "soprano_model_path",
+    "label": "Soprano model",
+    "kind": "file",
+    "extensions": [
+      ".pth",
+      ".pt",
+      ".onnx"
+    ]
+  },
+  {
+    "key": "avatar_path",
+    "label": "Avatar source image",
+    "kind": "file",
+    "extensions": [
+      ".png",
+      ".jpg",
+      ".jpeg",
+      ".webp"
+    ]
+  },
+  {
+    "key": "sadtalker_path",
+    "label": "SadTalker project (contains inference.py)",
+    "kind": "folder"
+  },
+  {
+    "key": "video_python_path",
+    "label": "SadTalker Python executable (blank: detect project venv)",
+    "kind": "file",
+    "extensions": [
+      ".exe"
+    ]
+  },
+  {
+    "key": "video_checkpoints_path",
+    "label": "SadTalker checkpoints (blank: project's checkpoints)",
+    "kind": "folder"
+  },
+  {
+    "key": "video_output_path",
+    "label": "Generated avatar videos and renderer logs",
+    "kind": "output"
+  },
+  {
+    "key": "ffmpeg_path",
+    "label": "FFmpeg executable (blank: detect installed/bundled copy)",
+    "kind": "file",
+    "extensions": [
+      ".exe"
+    ]
+  },
+  {
+    "key": "liveportrait_path",
+    "label": "Existing FasterLivePortrait project",
+    "kind": "folder",
+    "originalOnly": true
+  },
+  {
+    "key": "music_folder",
+    "label": "Music library folder",
+    "kind": "folder"
+  },
+  {
+    "key": "liveportrait_python_path",
+    "label": "FasterLivePortrait Python executable (blank: detect project venv)",
+    "kind": "file",
+    "extensions": [
+      ".exe"
+    ],
+    "originalOnly": true
+  },
+  {
+    "key": "native_youtube_token_path",
+    "label": "Existing YouTube authorized-user token",
+    "kind": "file",
+    "extensions": [
+      ".json"
+    ],
+    "nativeOnly": true
+  }
+]

@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType><TargetFramework>net10.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion><RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <PlatformTarget>x64</PlatformTarget><UseWinUI>true</UseWinUI><WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained><SelfContained>true</SelfContained>
+    <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition><EnableDefaultPageItems>false</EnableDefaultPageItems>
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants><ApplicationManifest>app.manifest</ApplicationManifest>
+    <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <AssemblyName>StreamerBot.Native</AssemblyName><Version>0.2.0</Version><ApplicationTitle>StreamerBot Native Preview</ApplicationTitle>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.6.4" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4314.35" />
+    <ProjectReference Include="../StreamerBot.Native.Core/StreamerBot.Native.Core.csproj" />
+  </ItemGroup>
+  <!-- Unpackaged MRT Core generates the app PRI, but SDK publish wiring can omit it.
+       Keep the resource index beside the executable, including self-contained builds. -->
+  <Target Name="PublishNativeResourceIndex" BeforeTargets="ComputeResolvedFilesToPublishList" DependsOnTargets="$(GenerateProjectPriFile)">
+    <Error Condition="!Exists('$(ProjectPriFullPath)')" Text="Native application resource index was not generated." />
+    <ItemGroup>
+      <ResolvedFileToPublish Include="$(ProjectPriFullPath)">
+        <RelativePath>$(ProjectPriFileName)</RelativePath>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
+</Project>

@@ -1,0 +1,36 @@
+name: Native Windows installer
+on:
+  push:
+    branches: [coderabbit/continue-from-yaml/43521e9c]
+    paths: [resource-paths.json, resource_paths.py, sadtalker_bridge.py, Toggle_Video_Rendering.bat, windows/StreamerBot.Native*/**, windows/voice/**, windows/installer/**, windows/Build-NativeInstaller.ps1, windows/Prepare-Voices.ps1, windows/NATIVE-PARITY.md, .github/workflows/native-installer.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  installer:
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Ensure NSIS compiler
+        shell: pwsh
+        run: |
+          if (!(Test-Path 'C:/Program Files (x86)/NSIS/makensis.exe')) {
+            choco install nsis --version=3.10 -y --no-progress
+            if ($LASTEXITCODE -ne 0) { throw "NSIS installation failed" }
+          }
+      - name: Build native app and installer
+        shell: pwsh
+        run: ./windows/Build-NativeInstaller.ps1 -MakeNsis 'C:/Program Files (x86)/NSIS/makensis.exe'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: StreamerBot-Native-Windows-x64
+          path: artifacts/native/
+          if-no-files-found: error

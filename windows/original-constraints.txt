@@ -1,0 +1,13 @@
+# Private compatibility environment for the preserved original application.
+# Do not use the experimental dashboard's lockfile or change the user's requirements.txt/constraints.txt.
+networkx==2.8.8
+numpy==1.26.4
+scipy==1.15.3
+setuptools==69.5.1
+wheel==0.43.0
+pip==24.0
+torch==2.5.1
+torchvision==0.20.1
+torchaudio==2.5.1
+transformers==4.44.2
+huggingface-hub==0.25.2
