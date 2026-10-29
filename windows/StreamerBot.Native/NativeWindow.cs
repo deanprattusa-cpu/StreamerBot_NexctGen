@@ -113,6 +113,10 @@ internal sealed partial class NativeWindow : Window
                     if (!await PathSettingsDialog.ShowAsync(this, _root.XamlRoot, _profile, selectedCache)) throw new IOException("Paths Save did not complete.");
                     if (ResourcePaths.VoiceCache(new Profile(_profile.StoragePath), Program.DataRoot) != selectedCache) throw new IOException("Selected voice cache was not persisted.");
                     await ReloadVoiceAsync();
+                    var settingsCache = Path.Combine(Program.DataRoot, "cache selected in general settings");
+                    _profile.Set("voice_cache_path", settingsCache);
+                    await SaveSettingsAsync();
+                    if (ResourcePaths.VoiceCache(new Profile(_profile.StoragePath), Program.DataRoot) != settingsCache) throw new IOException("General Settings Save lost its cache selection.");
                     await PathSettingsDialog.ShowAsync(this, _root.XamlRoot, _profile);
                     if (!File.Exists(Path.Combine(Program.DataRoot, "paths-ready.txt"))) throw new IOException("Native paths dialog did not lay out.");
                     var videoWindow = new AvatarVideoWindow(); videoWindow.Activate(); videoWindow.Close();
@@ -229,9 +233,17 @@ internal sealed partial class NativeWindow : Window
     private UIElement BuildSettings()
     {
         var count = new TextBlock();
-        var panel = Column(Row(_search, _settingsGroup, Button("Previous", () => { _settingsPage = Math.Max(0, _settingsPage - 1); RenderSettings(); return Task.CompletedTask; }), Button("Next", () => { _settingsPage++; RenderSettings(); return Task.CompletedTask; }), Button("Save", () => { _profile.Save(); ApplyHotkeys(); return Task.CompletedTask; })), count, _settingsRows);
+        var panel = Column(Row(_search, _settingsGroup, Button("Previous", () => { _settingsPage = Math.Max(0, _settingsPage - 1); RenderSettings(); return Task.CompletedTask; }), Button("Next", () => { _settingsPage++; RenderSettings(); return Task.CompletedTask; }), Button("Save", SaveSettingsAsync)), count, _settingsRows);
         _search.TextChanged += (_, _) => { _settingsPage = 0; RenderSettings(); }; _settingsGroup.SelectionChanged += (_, _) => { _settingsPage = 0; RenderSettings(); };
         return new ScrollViewer { Content = panel };
+    }
+    private async Task SaveSettingsAsync()
+    {
+        await StopAsync();
+        _profile.Save();
+        await ReloadVoiceAsync();
+        ApplyHotkeys();
+        WriteLog("Settings saved. Voice worker reloaded with the selected cache and runtime paths.");
     }
     private bool InGroup(string key)
     {

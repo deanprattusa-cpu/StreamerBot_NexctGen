@@ -64,7 +64,7 @@ class WorkerChecks(unittest.TestCase):
     def test_legacy_adapters_write_inside_selected_cache_and_restore_helpers(self):
         for engine in ("fish", "voicebox", "tiktok", "elevenlabs"):
             with self.subTest(engine=engine), tempfile.TemporaryDirectory() as directory:
-                root = Path(directory); selected = root / "selected external cache"
+                root = Path(directory).resolve(); selected = root / "selected external cache"
                 original_cache = lambda *a, **k: (_ for _ in ()).throw(AssertionError("unselected legacy cache used"))
                 original_play = lambda *a: None
                 model = types.SimpleNamespace(_handle_tts_cache=original_cache, play_wav_winsound=original_play)
