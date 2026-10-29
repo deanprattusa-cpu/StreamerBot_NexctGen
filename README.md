@@ -24,13 +24,26 @@ normalization. Profile-origin resolution and the application behavior are
 unchanged. The Windows installer workflow targets this task's assigned branch,
 `coderabbit/continue-from-yaml/43521e9c`, and also supports manual dispatch.
 
-The native UI repair now imports original environment channels and restores
-separate chat, review, keybind, keyboard-shortcut and statistics windows. The latest
-verified build is `2c062a8dd5acd68588fcaca3c97bbf53fe3a4c7b`: 45 core checks,
-5 worker tests, 6 video/path tests, full Windows publish, native interaction smoke,
-actual installation and uninstall retention passed. See
-[windows/BUILD-VALIDATION.md](windows/BUILD-VALIDATION.md) for the current installer,
-checksum and remaining parity gaps. Do not substitute the older installer in the YAML.
+The native app imports original environment channels and provides separate chat,
+review, keybind, keyboard-shortcut and statistics windows. Version **0.3.1** fixes
+bare-letter keyboard capture, saved resource/cache paths and overlay drag/resize,
+and adds an update EXE and **Help → Check for updates**.
+
+[Download the verified 0.3.1 package](https://github.com/deanprattusa-cpu/StreamerBot_NexctGen/actions/runs/40864098782/artifacts/12893316533).
+Extract it and run `StreamerBot-Native-Update.exe` to update an existing installation;
+use `StreamerBot-Native-Setup.exe` for a first installation. Close the old app
+completely before applying the one-time update. Settings, credentials, selected
+caches and models are preserved.
+
+Windows run `40864098782` verified source
+`76c963d873c84bae626b1ad5ec16e1da0ac6fc43`: 56 core checks, 19 Python checks,
+native keyboard/mouse/dialog interaction, install, upgrade, silent restart and
+uninstall retention passed. See [windows/BUILD-VALIDATION.md](windows/BUILD-VALIDATION.md)
+for checksums and limitations. Publication of the prepared `v0.3.1` GitHub Release
+is still pending: this task's GitHub delivery policy rejected release publishing.
+The in-app checker reads stable published releases, so it will offer updates once
+the release EXE and checksum assets are published. See [BUILD-NATIVE.md](BUILD-NATIVE.md)
+for the publication command. Do not substitute the older installer in the YAML.
 
 ## Packages
 
