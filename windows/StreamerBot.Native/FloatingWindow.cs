@@ -53,34 +53,57 @@ internal sealed class FloatingWindow : Window
         _profile.Set(_geometryKey, $"{s.Width}x{s.Height}{p.X:+0;-0;+0}{p.Y:+0;-0;+0}");
         // Persist from the normal profile save/owner close path; never write during UI teardown.
     }
-    internal static void AttachDrag(UIElement handle, Func<FloatingWindow> owner, bool resize = false)
+    internal static void AttachDrag(FrameworkElement handle, Func<FloatingWindow> owner, bool resize = false)
     {
         bool dragging = false;
+        FloatingWindow? active = null;
         PointInt32 startCursor = default, startPosition = default;
         SizeInt32 startSize = default;
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
+        void Stop(bool remember = true)
+        {
+            if (!dragging) return;
+            dragging = false; timer.Stop();
+            if (remember && active is { _destroying: false }) active.Remember();
+            active = null; handle.ReleasePointerCaptures();
+        }
+        void Move()
+        {
+            if (!dragging || active is null || !GetCursorPos(out var cursor)) return;
+            var dx = cursor.X - startCursor.X; var dy = cursor.Y - startCursor.Y;
+            if (resize) active.AppWindow.Resize(new SizeInt32(Math.Max(360, startSize.Width + dx), Math.Max(260, startSize.Height + dy)));
+            else active.AppWindow.Move(new PointInt32(startPosition.X + dx, startPosition.Y + dy));
+        }
+        timer.Tick += (_, _) =>
+        {
+            if (active is null || active._destroying || !active.IsShown) { Stop(false); return; }
+            Move();
+            if ((GetAsyncKeyState(1) & 0x8000) == 0) Stop();
+        };
         handle.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, e) =>
         {
             if (!e.GetCurrentPoint(handle).Properties.IsLeftButtonPressed || !GetCursorPos(out startCursor)) return;
-            var window = owner(); startPosition = window.AppWindow.Position; startSize = window.AppWindow.Size;
-            dragging = handle.CapturePointer(e.Pointer); e.Handled = dragging;
-            Program.Trace($"Drag press: {window.Title}, captured={dragging}, cursor={startCursor.X},{startCursor.Y}, window={startPosition.X},{startPosition.Y}");
+            active = owner(); startPosition = active.AppWindow.Position; startSize = active.AppWindow.Size;
+            dragging = true; handle.CapturePointer(e.Pointer); timer.Start(); e.Handled = true;
+            Program.Trace($"Drag press: {active.Title}, resize={resize}, cursor={startCursor.X},{startCursor.Y}, window={startPosition.X},{startPosition.Y}");
         }), true);
         handle.AddHandler(UIElement.PointerMovedEvent, new PointerEventHandler((_, e) =>
         {
-            if (!dragging || !GetCursorPos(out var cursor)) return;
-            var window = owner(); var dx = cursor.X - startCursor.X; var dy = cursor.Y - startCursor.Y;
-            if (resize) window.AppWindow.Resize(new SizeInt32(Math.Max(360, startSize.Width + dx), Math.Max(260, startSize.Height + dy)));
-            else window.AppWindow.Move(new PointInt32(startPosition.X + dx, startPosition.Y + dy));
-            Program.Trace($"Drag move: {window.Title}, delta={dx},{dy}, position={window.AppWindow.Position.X},{window.AppWindow.Position.Y}");
-            e.Handled = true;
+            if (!dragging) return;
+            Move(); e.Handled = true;
         }), true);
         handle.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler((_, e) =>
         {
             if (!dragging) return;
-            dragging = false; handle.ReleasePointerCapture(e.Pointer); owner().Remember(); e.Handled = true;
+            Move(); Stop(); e.Handled = true;
         }), true);
-        handle.PointerCaptureLost += (_, _) => { if (dragging) { dragging = false; owner().Remember(); } };
+        // A borderless resize can cross the XAML island before the window grows.
+        // Keep following the screen pointer until Windows reports button-up, even
+        // if XAML loses its routed capture outside that island.
+        handle.PointerCaptureLost += (_, _) => { if ((GetAsyncKeyState(1) & 0x8000) == 0) Stop(); };
+        handle.Unloaded += (_, _) => Stop(false);
     }
+    [DllImport("user32.dll")] private static extern short GetAsyncKeyState(int key);
     [DllImport("user32.dll")] private static extern bool GetCursorPos(out PointInt32 point);
     private bool _ghost;
     internal void ToggleGhost()
