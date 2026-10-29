@@ -63,6 +63,7 @@ internal sealed class FloatingWindow : Window
             if (!e.GetCurrentPoint(handle).Properties.IsLeftButtonPressed || !GetCursorPos(out startCursor)) return;
             var window = owner(); startPosition = window.AppWindow.Position; startSize = window.AppWindow.Size;
             dragging = handle.CapturePointer(e.Pointer); e.Handled = dragging;
+            Program.Trace($"Drag press: {window.Title}, captured={dragging}, cursor={startCursor.X},{startCursor.Y}, window={startPosition.X},{startPosition.Y}");
         }), true);
         handle.AddHandler(UIElement.PointerMovedEvent, new PointerEventHandler((_, e) =>
         {
@@ -70,6 +71,7 @@ internal sealed class FloatingWindow : Window
             var window = owner(); var dx = cursor.X - startCursor.X; var dy = cursor.Y - startCursor.Y;
             if (resize) window.AppWindow.Resize(new SizeInt32(Math.Max(360, startSize.Width + dx), Math.Max(260, startSize.Height + dy)));
             else window.AppWindow.Move(new PointInt32(startPosition.X + dx, startPosition.Y + dy));
+            Program.Trace($"Drag move: {window.Title}, delta={dx},{dy}, position={window.AppWindow.Position.X},{window.AppWindow.Position.Y}");
             e.Handled = true;
         }), true);
         handle.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler((_, e) =>

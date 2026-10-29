@@ -42,12 +42,14 @@ internal sealed partial class NativeWindow
         window.Show(); await Task.Delay(150);
         var start = window.AppWindow.Position;
         var header = OverlayPoint(window, "OverlayDragHandle");
+        Program.Trace($"Smoke drag: {key}, target={header.X},{header.Y}, window={start.X},{start.Y}, scale={window.Root.XamlRoot.RasterizationScale}");
+        await CaptureWindowAsync(window.Root, key + "-before-drag.png");
         SetCursorPos(header.X, header.Y); await Task.Delay(100);
         MouseButton(true); await Task.Delay(100);
         SetCursorPos(header.X + 50, header.Y + 40); await Task.Delay(150);
         MouseButton(false); await Task.Delay(100);
         var moved = window.AppWindow.Position;
-        if (Math.Abs(moved.X - start.X - 50) > 3 || Math.Abs(moved.Y - start.Y - 40) > 3) throw new IOException(key + " overlay header did not drag to the pointer position.");
+        if (Math.Abs(moved.X - start.X - 50) > 3 || Math.Abs(moved.Y - start.Y - 40) > 3) throw new IOException($"{key} overlay header did not drag to the pointer position. Start={start.X},{start.Y}, moved={moved.X},{moved.Y}, pointer={header.X},{header.Y}");
         window.Hide();
         var geometry = _profile.Text(key == "chat" ? "geo_selector" : "geo_guide");
         window.Show(); await Task.Delay(100);

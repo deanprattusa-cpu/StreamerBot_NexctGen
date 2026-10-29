@@ -22,9 +22,10 @@ internal sealed partial class NativeWindow
         var grid = new Grid { Margin = new Thickness(12), RowSpacing = 12 };
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); grid.RowDefinitions.Add(new RowDefinition()); grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         var header = new Grid(); header.ColumnDefinitions.Add(new ColumnDefinition()); header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var title = new TextBlock { Name = "OverlayDragHandle", Text = "Keyboard Shortcuts", FontSize = 18, FontWeight = Microsoft.UI.Text.FontWeights.Bold, VerticalAlignment = VerticalAlignment.Center };
-        FloatingWindow.AttachDrag(title, () => _toolWindows["shortcuts"]);
-        header.Children.Add(title); var close = Button("×", () => { _toolWindows["shortcuts"].Hide(); return Task.CompletedTask; }); Grid.SetColumn(close, 1); header.Children.Add(close); grid.Children.Add(header);
+        var title = new TextBlock { Text = "Keyboard Shortcuts", FontSize = 18, FontWeight = Microsoft.UI.Text.FontWeights.Bold, VerticalAlignment = VerticalAlignment.Center };
+        var dragArea = new Border { Name = "OverlayDragHandle", Background = Color(12, 75, 142), Padding = new Thickness(4), Child = title };
+        FloatingWindow.AttachDrag(dragArea, () => _toolWindows["shortcuts"]);
+        header.Children.Add(dragArea); var close = Button("×", () => { _toolWindows["shortcuts"].Hide(); return Task.CompletedTask; }); Grid.SetColumn(close, 1); header.Children.Add(close); grid.Children.Add(header);
         var sections = new StackPanel { Spacing = 22 };
         var groups = new (string Title, string[] Keys)[]
         {
