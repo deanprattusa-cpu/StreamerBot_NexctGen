@@ -187,7 +187,7 @@ internal sealed partial class NativeWindow : Window
     private readonly Dictionary<string, ToggleMenuFlyoutItem> _menuToggles = [];
     private MenuBar BuildMenu()
     {
-        var bar = new MenuBar();
+        var bar = new MenuBar { RequestedTheme = ElementTheme.Light, Background = Color(245, 245, 245) };
         MenuBarItem Menu(string text) { var menu = new MenuBarItem { Title = text }; bar.Items.Add(menu); return menu; }
         void Command(MenuBarItem menu, string text, Func<Task> action) { var item = new MenuFlyoutItem { Text = text }; item.Click += (_, _) => Run(action); menu.Items.Add(item); }
         void Toggle(MenuBarItem menu, string text, string key, bool fallback = false)
@@ -209,7 +209,7 @@ internal sealed partial class NativeWindow : Window
         Command(tools, "Paths — models, voices & video…", PathsAsync);
         Command(tools, "Enable / disable avatar video rendering", ToggleVideoAsync);
         Command(tools, "Keybinds & Hotkeys", () => { SelectTab(2); return Task.CompletedTask; }); Command(tools, "Chat list / manual reply", () => { SelectTab(0); return Task.CompletedTask; });
-        Command(tools, "Game guide / live context", GuideAsync); Command(tools, "Live statistics", StatsAsync); Command(tools, "Batch voice cache builder", BatchCacheAsync);
+        Command(tools, "Keyboard Shortcuts overlay", () => { ShowShortcutGuide(); return Task.CompletedTask; }); Command(tools, "Game guide / live context", GuideAsync); Command(tools, "Live statistics", StatsAsync); Command(tools, "Batch voice cache builder", BatchCacheAsync);
         Command(tools, "Standalone YouTube overlay", ShowYouTubeAsync); Command(tools, "Caption / avatar overlay", ShowOverlayAsync); Command(tools, "Music player", ShowMusicAsync); Command(tools, "Migration status", () => { SelectTab(4); return Task.CompletedTask; });
         var audio = Menu("Audio");
         Command(audio, "Voice presets / devices", () => { SelectTab(3); return Task.CompletedTask; });
@@ -341,8 +341,11 @@ internal sealed partial class NativeWindow : Window
             case "hk_strict_mode": _profile.Set("strict_repetition_mode", !_profile.Flag("strict_repetition_mode")); _profile.Save(); WriteLog("Anti-repeat: " + _profile.Flag("strict_repetition_mode")); break;
             case "hk_sys_status": ShowSystemStatus(); break;
             case "hk_play_overlay": await ShowYouTubeAsync(); break;
-            case "hk_guide": case "hk_open_context_window": await GuideAsync(); break;
+            case "hk_guide": ShowShortcutGuide(); break;
+            case "hk_guide_ghost": if (_toolWindows.TryGetValue("shortcuts", out var guide)) guide.ToggleGhost(); break;
+            case "hk_open_context_window": await GuideAsync(); break;
             case "hk_stats": await StatsAsync(); break;
+            case "hk_stats_ghost": if (_toolWindows.TryGetValue("stats", out var stats)) stats.ToggleGhost(); break;
             case "hk_open_list": ShowChatWindow(toggle: true); break;
             case "hk_hotkeys_window": SelectTab(2); break;
             case "hk_music_window": await ShowMusicAsync(); break;
@@ -522,11 +525,12 @@ internal sealed partial class NativeWindow : Window
         var text = new TextBox { Text = _profile.Text("native_live_context"), AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, MinHeight = 250 };
         if (await new ContentDialog { XamlRoot = _root.XamlRoot, Title = "Live game context", Content = text, PrimaryButtonText = "Apply", CloseButtonText = "Cancel" }.ShowAsync() == ContentDialogResult.Primary) { _profile.Set("native_live_context", text.Text); _profile.Save(); }
     }
-    private async Task StatsAsync()
+    private Task StatsAsync()
     {
-        var path = OriginalEnvironment.TokenFile(_profile); if (path.Length == 0) throw new InvalidOperationException("Import your YouTube authorized-user token first.");
-        var client = new YouTubeClient(_http, path, OriginalEnvironment.Selected(_profile)?.ChannelId); if (!await client.FindLiveAsync(_lifetime.Token)) throw new InvalidOperationException("No active live broadcast.");
-        await NoticeAsync((await client.StatisticsAsync(_lifetime.Token)).ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+        if (_toolWindows.TryGetValue("stats", out var existing) && existing.IsShown) { existing.Hide(); return Task.CompletedTask; }
+        var window = ShowTool("stats", "Live Statistics", BuildStatistics, 370, 180);
+        window.SetOpacity(_profile.Number("overlay_opacity", 0.85));
+        Run(UpdateStatisticsAsync); return Task.CompletedTask;
     }
     private async Task BatchCacheAsync()
     {

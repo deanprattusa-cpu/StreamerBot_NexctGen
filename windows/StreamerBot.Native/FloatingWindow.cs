@@ -57,6 +57,14 @@ internal sealed class FloatingWindow : Window
     {
         ReleaseCapture(); SendMessage(WinRT.Interop.WindowNative.GetWindowHandle(this), 0x00A1, resize ? 17 : 2, 0);
     }
+    private bool _ghost;
+    internal void ToggleGhost()
+    {
+        _ghost = !_ghost;
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        var style = GetWindowLong(hwnd, -20);
+        SetWindowLong(hwnd, -20, _ghost ? style | 0x00080020 : style & ~0x20);
+    }
     internal void SetOpacity(double opacity)
     {
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);

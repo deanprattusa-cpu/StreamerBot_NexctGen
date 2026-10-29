@@ -36,7 +36,13 @@ internal sealed partial class NativeWindow
         var toolbar = Row(Label("Channel:"), _channel, Button("+", AddChannelAsync), Button("Credentials", CredentialsAsync), Label("Persona:"), _persona, Label("Game:"), _game);
         var controls = Row(Label("Vol:"), _mainVolume, Label("Opacity:"), _mainOpacity,
             Button("▶ START", () => StartSessionAsync(false)), Button("SIMULATE", () => StartSessionAsync(true)), Button("■ STOP", StopAsync));
-        return new StackPanel { Children = { new ScrollViewer { Content = toolbar, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled }, controls } };
+        var layout = new Grid(); layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        layout.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); layout.ColumnDefinitions.Add(new ColumnDefinition());
+        toolbar.Margin = controls.Margin = new Thickness(6); toolbar.Spacing = controls.Spacing = 6;
+        var scroll = new ScrollViewer { Content = toolbar, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled };
+        layout.Children.Add(scroll); layout.Children.Add(controls);
+        layout.SizeChanged += (_, e) => { var compact = e.NewSize.Width < 1400; Grid.SetRow(controls, compact ? 1 : 0); Grid.SetColumn(controls, compact ? 0 : 1); Grid.SetColumnSpan(scroll, compact ? 2 : 1); Grid.SetColumnSpan(controls, compact ? 2 : 1); };
+        return layout;
     }
     private FrameworkElement BuildOriginalMain()
     {
@@ -53,7 +59,7 @@ internal sealed partial class NativeWindow
     {
         if (!_toolWindows.TryGetValue(key, out var window))
         {
-            window = new FloatingWindow(_profile, title, key == "chat" ? "geo_selector" : "geo_native_" + key, build(), width, height, borderless: key == "chat");
+            window = new FloatingWindow(_profile, title, key == "chat" ? "geo_selector" : key == "shortcuts" ? "geo_guide" : key == "stats" ? "geo_stats" : "geo_native_" + key, build(), width, height, borderless: key is "chat" or "shortcuts" or "stats");
             _toolWindows.Add(key, window);
         }
         window.Show(); return window;
@@ -233,7 +239,7 @@ internal sealed partial class NativeWindow
                 }
                 Tab(group, rows);
             }
-            else { var rows = Column(); foreach (var key in keys) rows.Children.Add(BuildHotkeyRow(key)); Tab(group, rows); }
+            else { var rows = new StackPanel { Spacing = 8, Margin = new Thickness(10) }; foreach (var key in keys) rows.Children.Add(BuildHotkeyRow(key)); Tab(group, rows); }
         }
         grid.Children.Add(Row(Button("Save Changes & Re-Bind", () =>
         {
@@ -246,28 +252,49 @@ internal sealed partial class NativeWindow
     }
     private UIElement BuildHotkeyRow(string key)
     {
-        var binding = new TextBox { Header = key.Replace("hk_", "").Replace('_', ' '), Text = _profile.Text(key), Width = 230 };
+        var binding = new TextBox { Text = _profile.Text(key), Width = 150, MinHeight = 28, Padding = new Thickness(5, 2, 5, 2), Foreground = Color(255, 255, 255), Background = Color(0, 110, 0) };
         _bindingEditors[key] = binding; _hotkeyRefresh.Add(() => binding.Text = _profile.Text(key));
-        var row = Column(binding);
+        var heading = new TextBlock { Text = HotkeyLabel(key), Width = 170, VerticalAlignment = VerticalAlignment.Center, FontWeight = Microsoft.UI.Text.FontWeights.Bold };
+        var top = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        top.Children.Add(heading); top.Children.Add(binding);
+        var row = new StackPanel { Spacing = 4, Margin = new Thickness(8) }; row.Children.Add(top);
         if (Catalog.SmartKeys.Contains(key) || key is "hk_reply_last" or "hk_vision")
         {
-            var mode = new ComboBox { Header = "Output", ItemsSource = new[] { "V+T", "V", "T" }, SelectedItem = _profile.Text(key + "_mode", "V+T"), Width = 100 };
-            mode.SelectionChanged += (_, _) => { if (mode.SelectedItem is string value) _profile.Set(key + "_mode", value); }; _hotkeyRefresh.Add(() => mode.SelectedItem = _profile.Text(key + "_mode", "V+T"));
-            var options = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 }; options.Children.Add(mode);
-            foreach (var (suffix, label) in new[] { ("_short", "Short"), ("_audio_enabled", "Soundboard"), ("_mute_ai", "Mute AI") })
+            var mode = new ComboBox { ItemsSource = new[] { "V+T", "V", "T" }, SelectedItem = _profile.Text(key + "_mode", "V+T"), Width = 75, MinHeight = 28, Padding = new Thickness(5, 2, 5, 2) };
+            mode.SelectionChanged += (_, _) => { if (mode.SelectedItem is string value) _profile.Set(key + "_mode", value); }; _hotkeyRefresh.Add(() => mode.SelectedItem = _profile.Text(key + "_mode", "V+T")); top.Children.Add(mode);
+            CheckBox Flag(string suffix, string label)
             {
-                var box = new CheckBox { Content = label, IsChecked = _profile.Flag(key + suffix) }; box.Checked += (_, _) => _profile.Set(key + suffix, true); box.Unchecked += (_, _) => _profile.Set(key + suffix, false); _hotkeyRefresh.Add(() => box.IsChecked = _profile.Flag(key + suffix)); options.Children.Add(box);
+                var box = new CheckBox { Content = label, IsChecked = _profile.Flag(key + suffix), MinHeight = 28 };
+                box.Checked += (_, _) => _profile.Set(key + suffix, true); box.Unchecked += (_, _) => _profile.Set(key + suffix, false); _hotkeyRefresh.Add(() => box.IsChecked = _profile.Flag(key + suffix)); return box;
             }
-            row.Children.Add(options);
-            foreach (var (suffix, label) in new[] { ("_custom", "Override text / phrases separated by |"), ("_prompt", "AI Prompt"), ("_audio", "Soundboard audio file") })
+            top.Children.Add(Flag("_short", "Short"));
+            var fields = new Grid { ColumnSpacing = 8 };
+            fields.ColumnDefinitions.Add(new ColumnDefinition()); fields.ColumnDefinitions.Add(new ColumnDefinition()); fields.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            foreach (var (suffix, label, column) in new[] { ("_custom", "Override:", 0), ("_prompt", "AI Prompt:", 1) })
             {
-                var text = new TextBox { Header = label, Text = _profile.Text(key + suffix), TextWrapping = TextWrapping.Wrap, AcceptsReturn = suffix != "_audio" };
-                text.TextChanged += (_, _) => _profile.Set(key + suffix, text.Text); _hotkeyRefresh.Add(() => text.Text = _profile.Text(key + suffix)); row.Children.Add(text);
-                if (suffix == "_audio") row.Children.Add(Button("Browse audio", async () => { var file = await PickAsync(".wav", ".mp3"); if (file is not null) text.Text = file.Path; }));
+                var text = new TextBox { Text = _profile.Text(key + suffix), MinHeight = 28, Padding = new Thickness(4, 2, 4, 2), Foreground = column == 0 ? Color(0, 230, 255) : Color(255, 220, 0) };
+                text.TextChanged += (_, _) => _profile.Set(key + suffix, text.Text); _hotkeyRefresh.Add(() => text.Text = _profile.Text(key + suffix));
+                var field = new Grid { ColumnSpacing = 5 }; field.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); field.ColumnDefinitions.Add(new ColumnDefinition());
+                field.Children.Add(new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center }); Grid.SetColumn(text, 1); field.Children.Add(text); Grid.SetColumn(field, column); fields.Children.Add(field);
             }
+            var sound = Button("♫ Sound", async () =>
+            {
+                var path = new TextBox { Header = "Soundboard audio file", Text = _profile.Text(key + "_audio") };
+                var enabled = new CheckBox { Content = "Play sound with this key", IsChecked = _profile.Flag(key + "_audio_enabled") };
+                var content = Column(enabled, path, Button("Browse audio", async () => { var file = await PickAsync(".wav", ".mp3"); if (file is not null) path.Text = file.Path; }));
+                if (await new ContentDialog { XamlRoot = _toolWindows["hotkeys"].Root.XamlRoot, Title = HotkeyLabel(key) + " sound", Content = content, PrimaryButtonText = "Apply", CloseButtonText = "Cancel" }.ShowAsync() == ContentDialogResult.Primary)
+                { _profile.Set(key + "_audio", path.Text); _profile.Set(key + "_audio_enabled", enabled.IsChecked == true); }
+            });
+            var actions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 }; var mute = Flag("_mute_ai", "Mute AI"); mute.Foreground = Color(255, 70, 70); actions.Children.Add(mute); actions.Children.Add(sound); Grid.SetColumn(actions, 2); fields.Children.Add(actions);
+            row.Children.Add(fields);
         }
-        return new Border { BorderBrush = Color(55, 55, 55), BorderThickness = new Thickness(1), Child = row };
+        return new Border { BorderBrush = Color(110, 110, 110), BorderThickness = new Thickness(1), Background = Color(35, 35, 35), Child = row };
     }
+    private static string HotkeyLabel(string key) => key switch
+    {
+        "hk_idle" => "Idle Chat", "hk_thanks" => "Thanks / Greet", "hk_question" => "Game Question", "hk_help" => "Ask for Help", "hk_death" => "Death / Rage", "hk_likes_thanks" => "Thanks for Likes", "hk_brb" => "BRB / AFK", "hk_tech_issue" => "Tech Issue", "hk_talk_viewers" => "Talk Trends", "hk_attack" => "Attack Callout", "hk_puzzle" => "Puzzle Solved", "hk_boss_win" => "Boss Defeated", "hk_clip_that" => "Clip That!", "hk_panic" => "Panic/Scream", "hk_shoutout_users" => "Shoutout Users", "hk_guide" => "Keyboard Shortcuts", "hk_open_context_window" => "Game Context", "hk_guide_ghost" => "Toggle Guide Ghost", "hk_stats_ghost" => "Toggle Stats Ghost",
+        _ => System.Globalization.CultureInfo.InvariantCulture.TextInfo.ToTitleCase(key.Replace("hk_", "").Replace('_', ' '))
+    };
     private void RefreshHotkeyEditors() { foreach (var update in _hotkeyRefresh) update(); }
     private void ShowSystemStatus() => ShowTool("system-status", "System Status", () => Column(Label("StreamerBot Native"), new TextBlock { Text = $"Runtime: .NET {Environment.Version}\nProcess memory: {Environment.WorkingSet / 1024 / 1024} MB\nVoice engine: {_profile.Text("tts_mode")}\nChannel: {_profile.Text("channel_name")}" }, Button("GPU diagnostics", GpuAsync)), 420, 300);
 
@@ -290,6 +317,17 @@ internal sealed partial class NativeWindow
         if (hotkeys.AppWindow.Presenter is not OverlappedPresenter { IsAlwaysOnTop: true } || _bindingEditors.Count != Catalog.SmartKeys.Concat(Catalog.SystemKeys).Distinct().Count()) throw new IOException("Detached keybind window did not load all bindings as topmost.");
         _hotkeyTabs!.SelectedItem = _hotkeyTabs.TabItems.OfType<TabViewItem>().Single(t => t.Header?.ToString() == "System"); await Task.Delay(200);
         await CaptureWindowAsync(hotkeys.Root, "hotkeys-preview.png"); hotkeys.Hide();
+        _hotkeyTabs.SelectedItem = _hotkeyTabs.TabItems.OfType<TabViewItem>().Single(t => t.Header?.ToString() == "Reactions"); hotkeys.Show(); await Task.Delay(200);
+        await CaptureWindowAsync(hotkeys.Root, "reactions-preview.png"); hotkeys.Hide();
+        _chat.Focus(FocusState.Programmatic); await HandleHotkeyAsync("hk_guide"); await Task.Delay(200);
+        var guide = _toolWindows["shortcuts"];
+        if (!guide.IsShown || guide.AppWindow.Presenter is not OverlappedPresenter { IsAlwaysOnTop: true }) throw new IOException("Keyboard Shortcuts did not open as a topmost window.");
+        await CaptureWindowAsync(guide.Root, "shortcuts-preview.png");
+        guide.ToggleGhost(); guide.ToggleGhost(); ShowShortcutGuide(); if (guide.IsShown) throw new IOException("Keyboard Shortcuts did not toggle closed.");
+        ShowShortcutGuide(); if (!guide.IsShown) throw new IOException("Keyboard Shortcuts did not reopen."); guide.Hide();
+        await StatsAsync(); await Task.Delay(150);
+        if (!_toolWindows["stats"].IsShown) throw new IOException("Statistics overlay did not open.");
+        await CaptureWindowAsync(_toolWindows["stats"].Root, "stats-preview.png"); await StatsAsync();
         ShowChatWindow(); await Task.Delay(300);
         var chat = _toolWindows["chat"];
         if (chat.AppWindow.Presenter is not OverlappedPresenter { IsAlwaysOnTop: true } || _chatList.Items.Count == 0) throw new IOException("Detached chat window did not load.");

@@ -55,7 +55,7 @@ credential rotation still needs migration.
 
 Tools → Keybinds & Hotkeys opens a separate topmost native window, with General,
 AI & Output, Chat Keys, Hype, Custom, Reactions, System, YouTube and Music groups.
-System/YouTube/Music bindings use two columns. Save Changes & Re-Bind persists
+Smart keys use compact two-line rows with inline override/prompt fields and a separate Sound dialog. System/YouTube/Music bindings use two columns. Save Changes & Re-Bind persists
 bindings and closes the window. The original `hk_hotkeys_window` opens it too.
 
 Tools → Chat List / Manual Reply opens a separate topmost chat selector. It has
@@ -68,6 +68,13 @@ text, SEND (V+T), SEND (V), SEND (T), REVISE and REJECT. Closing rejects the rep
 The selected output mode and edited text reach the delivery pipeline; cancellation
 closes the pending review. Review/chat geometry is saved in the original
 `geo_review`/`geo_selector` fields. Other tool windows retain their geometry too.
+
+The blue Keyboard Shortcuts overlay is a separate borderless, topmost native window.
+`hk_guide` toggles it; `hk_guide_ghost` toggles click-through. Its keycaps reflect the
+saved bindings each time it opens, and it retains `geo_guide`. Game context remains
+a separate action. Live statistics opens native viewer/like tiles, refreshes every
+30 seconds while visible, and retains `geo_stats`; unavailable subscriber totals
+are displayed as `--`. These overlays support dragging, opacity and hide-all.
 
 This is a restoration of the reported workflows, not certification of 100% parity.
 Actual microphone capture and borderless window dragging still need interactive
