@@ -31,7 +31,7 @@ internal static class OriginalWorkflowChecks
         OriginalEnvironment.Select(reopened, channels[0]);
         check(OriginalEnvironment.TokenFile(reopened) == Path.Combine(credentials, "first_token_1.json"), "switching channels switches credentials");
         var copied = Path.Combine(root, "explicit-token.json"); OriginalEnvironment.SetToken(reopened, channels[0], copied);
-        check(OriginalEnvironment.TokenFile(reopened) == copied, "explicit token assignment belongs to selected channel");
+        check(OriginalEnvironment.TokenFile(reopened) == Path.Combine(credentials, "first_token_1.json"), "automatically detected shared folder supersedes old individual token imports");
         OriginalEnvironment.Select(reopened, channels[1]);
         check(OriginalEnvironment.TokenFile(reopened) != copied, "another channel never uses the selected channel's explicit token");
         OriginalEnvironment.Add(reopened, "New Account", "new-id");

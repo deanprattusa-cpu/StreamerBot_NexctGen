@@ -25,7 +25,7 @@ try {
     Get-ChildItem $SmokeRoot | Format-Table Name,Length
     Get-Content (Join-Path $SmokeRoot 'stderr.txt') -ErrorAction SilentlyContinue
     Get-WinEvent -FilterHashtable @{ LogName='Application'; StartTime=(Get-Date).AddMinutes(-2) } -ErrorAction SilentlyContinue | Where-Object { $_.ProviderName -in @('Application Error','.NET Runtime','Windows Error Reporting') } | Select-Object TimeCreated, ProviderName, Message | ConvertTo-Json -Depth 4 | Set-Content (Join-Path $SmokeRoot 'windows-events.json')
-    if ($Smoke.ExitCode -ne 0 -or -not (Test-Path (Join-Path $SmokeRoot 'smoke-ready.txt')) -or -not (Test-Path (Join-Path $SmokeRoot 'original-workflows-ready.txt')) -or -not (Test-Path (Join-Path $SmokeRoot 'keyboard-ready.txt')) -or -not (Test-Path (Join-Path $SmokeRoot 'overlay-drag-ready.txt')) -or -not (Test-Path (Join-Path $SmokeRoot 'paths-ready.txt'))) { throw 'Native UI did not load and lay out successfully' }
+    if ($Smoke.ExitCode -ne 0 -or -not (Test-Path (Join-Path $SmokeRoot 'smoke-ready.txt')) -or -not (Test-Path (Join-Path $SmokeRoot 'original-workflows-ready.txt')) -or -not (Test-Path (Join-Path $SmokeRoot 'game-cache-ready.txt')) -or -not (Test-Path (Join-Path $SmokeRoot 'keyboard-ready.txt')) -or -not (Test-Path (Join-Path $SmokeRoot 'overlay-drag-ready.txt')) -or -not (Test-Path (Join-Path $SmokeRoot 'paths-ready.txt'))) { throw 'Native UI did not load and lay out successfully' }
     Write-Host 'Native WinUI startup / layout / shutdown smoke test passed.'
     @'
 # Build validation
@@ -71,13 +71,13 @@ See NATIVE-PARITY.md for incomplete original workflows. No user secrets or model
     Set-ItemProperty 'HKCU:/Software/Microsoft/Windows/CurrentVersion/Uninstall/StreamerBotNative' -Name DisplayVersion -Value '0.3.0'
     $UpdateProcess = Start-Process -FilePath $Update -ArgumentList '/S' -PassThru -Wait
     if ($UpdateProcess.ExitCode -ne 0 -or (Get-FileHash $CoreDll).Hash -ne $ExpectedCoreHash -or (Get-FileHash $PreservedProfile).Hash -ne $ProfileHash -or (Get-FileHash $CacheFixture).Hash -ne $CacheHash -or -not (Test-Path $AddedFile)) { throw 'Update failed payload replacement or settings/cache/user-file retention' }
-    if ((Get-ItemProperty 'HKCU:/Software/Microsoft/Windows/CurrentVersion/Uninstall/StreamerBotNative').DisplayVersion -ne '0.3.2') { throw 'Update version was not recorded' }
+    if ((Get-ItemProperty 'HKCU:/Software/Microsoft/Windows/CurrentVersion/Uninstall/StreamerBotNative').DisplayVersion -ne '0.3.3') { throw 'Update version was not recorded' }
     Write-Host 'Actual update EXE / locked-app protection / profile-cache retention checks passed.'
     $InstalledSmoke = Join-Path $SmokeRoot 'installed-app'
     New-Item -ItemType Directory -Path $InstalledSmoke -Force | Out-Null
     $InstalledProcess = Start-Process -FilePath (Join-Path $Installed 'StreamerBot.Native.exe') -ArgumentList @('--smoke-test', ('"' + $InstalledSmoke + '"')) -PassThru
     if (-not $InstalledProcess.WaitForExit(30000)) { $InstalledProcess.Kill(); throw 'Installed native app smoke test timed out' }
-    if ($InstalledProcess.ExitCode -ne 0 -or -not (Test-Path (Join-Path $InstalledSmoke 'smoke-ready.txt')) -or -not (Test-Path (Join-Path $InstalledSmoke 'original-workflows-ready.txt')) -or -not (Test-Path (Join-Path $InstalledSmoke 'keyboard-ready.txt')) -or -not (Test-Path (Join-Path $InstalledSmoke 'overlay-drag-ready.txt')) -or -not (Test-Path (Join-Path $InstalledSmoke 'paths-ready.txt'))) { throw 'Installed native app did not start successfully' }
+    if ($InstalledProcess.ExitCode -ne 0 -or -not (Test-Path (Join-Path $InstalledSmoke 'smoke-ready.txt')) -or -not (Test-Path (Join-Path $InstalledSmoke 'original-workflows-ready.txt')) -or -not (Test-Path (Join-Path $InstalledSmoke 'game-cache-ready.txt')) -or -not (Test-Path (Join-Path $InstalledSmoke 'keyboard-ready.txt')) -or -not (Test-Path (Join-Path $InstalledSmoke 'overlay-drag-ready.txt')) -or -not (Test-Path (Join-Path $InstalledSmoke 'paths-ready.txt'))) { throw 'Installed native app did not start successfully' }
     # Exercise the exact silent handoff used by Help -> Check for updates.
     $RunningApp = Start-Process -FilePath (Join-Path $Installed 'StreamerBot.Native.exe') -PassThru
     $RestartedApp = $null

@@ -65,7 +65,7 @@ public static class OriginalEnvironment
     }
     public static void ImportProfile(Profile profile, string path)
     {
-        var retained = new[] { ValuesKey, "native_environment_directory", "native_credentials_directory", "native_channel_tokens", "native_youtube_token_path" }.ToDictionary(k => k, k => profile.Data[k]?.DeepClone());
+        var retained = new[] { ValuesKey, "native_environment_directory", "native_credentials_directory", "native_channel_tokens", "native_youtube_token_path", "resource_paths", "groq_keys", "gemini_keys", "openrouter_keys", "sambanova_keys", "elevenlabs_keys", "native_microphone_id", "native_speaker_id", "native_windows_voice" }.Concat(ResourcePaths.Entries.Select(e => e.Key)).Distinct().ToDictionary(k => k, k => profile.Data[k]?.DeepClone());
         profile.Import(path);
         foreach (var (key, value) in retained) if (!profile.Data.ContainsKey(key) && value is not null) profile.Set(key, value);
     }
@@ -112,13 +112,16 @@ public static class OriginalEnvironment
         var selected = profile.Text("native_credentials_directory");
         if (selected.Length > 0) return profile.Resolve(selected);
         var origin = profile.Text("native_environment_directory");
-        return origin.Length > 0 ? Path.Combine(origin, "credentials") : "";
+        foreach (var root in new[] { origin, profile.SourceDirectory, AppContext.BaseDirectory }.Where(p => p.Length > 0).Distinct())
+            foreach (var name in new[] { "credential", "credentials" })
+            { var candidate = Path.Combine(root, name); if (Directory.Exists(candidate)) return candidate; }
+        return "";
     }
     public static string[] TokenFiles(Profile profile)
     {
         var channel = Selected(profile);
         var folder = CredentialsDirectory(profile);
-        if (profile.Text("native_credentials_directory").Length == 0 && channel is not null &&
+        if (folder.Length == 0 && channel is not null &&
             profile.Data["native_channel_tokens"]?[channel.Number.ToString()] is JsonValue value &&
             value.TryGetValue<string>(out var assigned) && assigned.Length > 0) return [profile.Resolve(assigned)];
         if (channel is not null && channel.TokenPrefix.Length > 0 && Directory.Exists(folder))

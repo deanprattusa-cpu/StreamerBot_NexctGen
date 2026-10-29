@@ -23,6 +23,8 @@ public sealed class StreamController(Profile profile, AiClient ai) : IAsyncDispo
     public event Action<ChatMessage>? Chat;
     public event Action<string>? Caption;
     public event Func<string, string, CancellationToken, Task>? Speak;
+    public event Func<string, CancellationToken, Task>? CacheRequested;
+    public event Func<string, CancellationToken, Task>? PlayCachedAudio;
     public event Func<ReviewRequest, CancellationToken, Task<ReviewDecision?>>? Review;
     public void Start(YouTubeClient? youtube, bool simulation)
     {
@@ -82,7 +84,7 @@ public sealed class StreamController(Profile profile, AiClient ai) : IAsyncDispo
     public async Task GenerateAsync(string prompt, string category = "manual", string? image = null, CancellationToken token = default)
     {
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, _session.Token, _action.Token);
-        if (profile.Flag("force_cache_only")) { Log?.Invoke("Cache-only mode: AI generation skipped. Use a cached fixed phrase."); return; }
+        if (profile.Flag("force_cache_only")) { if (CacheRequested is not null) await CacheRequested(category, linked.Token); return; }
         if (!await _reply.WaitAsync(0, linked.Token)) { Log?.Invoke("AI is busy; request skipped."); return; }
         var generation = Volatile.Read(ref _generation);
         try
@@ -96,12 +98,12 @@ public sealed class StreamController(Profile profile, AiClient ai) : IAsyncDispo
         }
         finally { _reply.Release(); }
     }
-    public async Task DeliverAsync(string text, string category, CancellationToken token = default, string? mode = null, bool silent = false, string context = "Manual reply")
+    public async Task DeliverAsync(string text, string category, CancellationToken token = default, string? mode = null, bool silent = false, string context = "Manual reply", string? cachedAudio = null)
     {
-        if (string.IsNullOrWhiteSpace(text)) return;
+        if (string.IsNullOrWhiteSpace(text) && cachedAudio is null) return;
         if (!silent && profile.Flag("global_ai_mute")) { Log?.Invoke("Global AI mute: chat and voice output suppressed."); return; }
         mode ??= category.StartsWith("hk_") ? profile.Text(category + "_mode", "V+T") : profile.Text("auto_reply_output_mode", "V+T");
-        if (profile.Flag("review_mode") && Review is not null && !silent)
+        if (profile.Flag("review_mode") && Review is not null && !silent && cachedAudio is null)
         {
             var approved = await Review(new ReviewRequest(text, context, mode), token);
             if (approved is null || string.IsNullOrWhiteSpace(approved.Text)) return;
@@ -114,19 +116,24 @@ public sealed class StreamController(Profile profile, AiClient ai) : IAsyncDispo
             var clean = Regex.Replace(text, @"\[.*?\]|\*.*?\*|\(.*?\)", "").Trim();
             if (clean.Length > 0) await _youtube.SendAsync(clean, token);
         }
-        if (mode.Contains('V') && (!profile.Flag("global_ai_mute") || silent) && Speak is not null) await Speak(text, silent ? "cache:" + category : category, token);
+        if (mode.Contains('V') && (!profile.Flag("global_ai_mute") || silent))
+        {
+            if (cachedAudio is not null && PlayCachedAudio is not null) await PlayCachedAudio(cachedAudio, token);
+            else if (Speak is not null) await Speak(text, silent ? "cache:" + category : category, token);
+        }
     }
     public async Task TriggerAsync(string key, CancellationToken token = default)
     {
+        if (profile.Flag("force_cache_only")) { if (CacheRequested is not null) await CacheRequested(key, token); return; }
         var phrases = profile.Text(key + "_custom");
         if (phrases.Length > 0)
         {
             var choices = phrases.Split(['|', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            if (choices.Length > 0) await DeliverAsync(choices[Random.Shared.Next(choices.Length)], key, token);
-            return;
+            if (choices.Length > 0) { await DeliverAsync(choices[Random.Shared.Next(choices.Length)], key, token); return; }
         }
         var prompt = profile.Text(key + "_prompt", "React naturally to " + key.Replace("hk_", "").Replace('_', ' '));
-        if (profile.Flag(key + "_short")) prompt += " Use at most ten words.";
+        if (string.IsNullOrWhiteSpace(prompt)) prompt = "React naturally to " + key.Replace("hk_", "").Replace('_', ' ');
+        if (profile.Flag(key + "_short") && !profile.Flag("custom_length_enabled")) prompt += " Use one to four words only.";
         if (profile.Flag("custom_length_enabled")) prompt += $" Use at most {profile.Number("custom_length_val", 30)} words.";
         await GenerateAsync(prompt, key, token: token);
     }

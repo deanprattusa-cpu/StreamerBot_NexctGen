@@ -31,6 +31,9 @@ public sealed class Profile
             if (File.Exists(origin) && Directory.Exists(File.ReadAllText(origin))) SourceDirectory = File.ReadAllText(origin);
         }
     }
+    private Profile(string storagePath, string sourceDirectory, JsonObject data)
+    { StoragePath = storagePath; SourceDirectory = sourceDirectory; Data = data; }
+    public Profile Snapshot() => new(StoragePath, SourceDirectory, Data.DeepClone().AsObject());
     public string Text(string key, string fallback = "") => Data[key] is JsonValue value && value.TryGetValue<string>(out var text) ? text : fallback;
     public bool Flag(string key, bool fallback = false) => Data[key] is JsonValue value && value.TryGetValue<bool>(out var flag) ? flag : fallback;
     public double Number(string key, double fallback = 0) => Data[key] is JsonValue value && value.TryGetValue<double>(out var number) && double.IsFinite(number) ? number : fallback;

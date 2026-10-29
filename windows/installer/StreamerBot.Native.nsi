@@ -24,10 +24,10 @@ InstallDirRegKey HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\Strea
 RequestExecutionLevel user
 SetCompressor /SOLID lzma
 SetCompressorDictSize 64
-VIProductVersion "0.3.2.0"
+VIProductVersion "0.3.3.0"
 VIAddVersionKey "ProductName" "StreamerBot Native Preview"
 VIAddVersionKey "FileDescription" "StreamerBot native Windows migration preview installer"
-VIAddVersionKey "FileVersion" "0.3.2"
+VIAddVersionKey "FileVersion" "0.3.3"
 VIAddVersionKey "LegalCopyright" "StreamerBot contributors"
 !define MUI_ABORTWARNING
 !define MUI_WELCOMEPAGE_TEXT "Install the C# / WinUI 3 migration preview.$\r$\n$\r$\nSome original functionality is still being ported. Keep your original app; read NATIVE-PARITY.md after installation.$\r$\n$\r$\n.NET and Windows App SDK are bundled. Voice models and the optional private Python voice runtime are downloaded separately from the app."
@@ -107,7 +107,7 @@ Section "Native application"
   CreateShortcut "$SMPROGRAMS\StreamerBot Native\Uninstall.lnk" "$INSTDIR\Uninstall.exe"
   CreateShortcut "$DESKTOP\StreamerBot Native.lnk" "$INSTDIR\StreamerBot.Native.exe"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\StreamerBotNative" "DisplayName" "StreamerBot Native Preview"
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\StreamerBotNative" "DisplayVersion" "0.3.2"
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\StreamerBotNative" "DisplayVersion" "0.3.3"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\StreamerBotNative" "InstallLocation" "$INSTDIR"
   WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\StreamerBotNative" "UninstallString" '$\"$INSTDIR\Uninstall.exe$\"'
   WriteRegDWORD HKCU "Software\Microsoft\Windows\CurrentVersion\Uninstall\StreamerBotNative" "NoModify" 1

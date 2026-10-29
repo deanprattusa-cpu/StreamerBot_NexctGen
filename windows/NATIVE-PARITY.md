@@ -1,4 +1,4 @@
-# StreamerBot Native 0.3.2 — migration preview
+# StreamerBot Native 0.3.3 — migration preview
 
 This is a new C#/.NET 10 and WinUI 3 Windows desktop application. The main UI,
 settings editor, global hotkeys, AI requests, session logic and YouTube REST
@@ -75,7 +75,10 @@ in `credentials` beside the imported `.env` are discovered for that channel.
 Alternatively import its authorized token or authorize its Google Desktop client
 through Credentials. Legacy explicitly assigned tokens remain supported until a shared folder is selected.
 Live-broadcast lookup filters by the selected channel ID. Channel/game selection
-is locked during a session; stop before switching. Credentials → Choose shared credentials folder points directly at the original folder.
+is locked during a session; stop before switching. The app automatically finds `credential` or `credentials` beside the imported
+original .env/config or the application. No individual token import is needed.
+Credentials shows the detected folder and token count. Repair/override controls
+are collapsed and optional. Detected folders supersede old individual token imports.
 All matching channel tokens are discovered in numeric order. Selecting a folder
 makes it authoritative: the app does not fall back to another folder or channel.
 Ready access tokens are reused; refreshed tokens are saved atomically in that
@@ -163,7 +166,7 @@ with a link/path in the session log. Each render has a separate job folder; an o
 MP4 is never returned as a new result. Failed renders fall back to voice audio.
 The native app plays successful video through a native Windows player window.
 Turning rendering off leaves audio playback available; original video-cache
-shuffle/replay workflows are still incomplete in the native preview.
+clips can now be replayed directly with their existing same-name MP4 when present.
 
 The original control panel also gains Tools → Paths through the separate repair
 files. It saves `resource_paths.json` beside that app and includes paths in profile
@@ -188,15 +191,15 @@ lip sync.
 
 ## Original behavior still requiring migration
 
-- Advanced multi-tap and cache-shuffle hotkey behavior; unimplemented system
-  actions report this explicitly when pressed. The editor retains their settings.
+- Some system actions remain unimplemented and report this explicitly when pressed.
+  Smart-key double-tap cache playback and shuffle/repeat modes are implemented.
 - Exact original AI failover policy and subscriber/statistics
   greeting triggers.
 - Automated game-prompt/reaction rewriting, guide ghost modes, overlay ghost and
   opacity behavior, full music/YouTube controls, remote companion and generated
   full animated-avatar bridges (beyond the new SadTalker path).
 - Full AI-generated cache batch workflows; this build caches fixed phrases only.
-- Force-cache-only operation and visual gameplay capture/analysis are not ready.
+- Visual gameplay capture/analysis remains unfinished.
 - RVC now synthesizes a Windows SAPI source WAV and converts it with the selected
   RVC model/index. Real RVC/GPU playback still requires testing on the Windows PC.
   Soprano remains unavailable. Whisper requires an additional compatible whisper
@@ -214,3 +217,32 @@ See BUILD-VALIDATION.md next to this file for the actual build checks. Native UI
 audio hardware, GPU inference and live cloud accounts need real Windows testing.
 This preview is unsigned; Windows may show an unknown-publisher notice. Verify
 the supplied checksum and use only the installer you intended to download.
+
+## Original voice cache and saved game sessions (0.3.3)
+
+Force Cache and smart-key double taps read the original selected-engine cache
+folders directly: `<engine>_cache/channel/game/voice/category/*.wav`, with `.txt`
+sidecars for chat output. The `hk_` prefix is removed when locating the category.
+No Python/model startup, synthesis, file conversion or new video rendering is
+needed for existing clips. Same-name MP4 files play when avatar video is enabled.
+The selected cache folder can be the original project root or the engine cache
+folder itself; original config/.env directories are also searched automatically.
+
+Search follows the attached controller: current channel/game, General/Just
+Chatting, old engine/category layout, then other games/channels only when
+`cache_fallback_any_game` is enabled (original default true). Engines are never
+silently changed. Shuffle exhausts a bag; repeat-all cycles it; repeat-one pins
+a clip. Ctrl+Shift+Z cycles these playback modes without changing Force Cache.
+Instant reaction keys have no tap delay; other smart keys use the original400ms
+single/double-tap interval. Stop Audio cancels pending taps and playback.
+
+File → Load game session / config applies saved game name, prompts/directives,
+voice engine/voice settings, and hotkeys. Missing shared cache/runtime/device/API
+settings are retained; explicitly supplied fields win. The original JSON is not
+overwritten. Save game session as exports the current settings. Game-name spaces
+are preserved because the original cache directory mapping distinguishes them.
+New native cache entries include identity/text sidecars for future cache playback.
+
+Tests use synthetic media dispatch and mocked providers; real output devices,
+private cache files, provider playback and full original feature parity are not
+certified by these checks.

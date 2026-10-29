@@ -80,7 +80,7 @@ internal sealed partial class NativeWindow
         var channel = OriginalEnvironment.Selected(_profile);
         if (!simulation && channel is null && _profile.Text("native_youtube_token_path").Length == 0) throw new InvalidOperationException("Import your original .env or add a channel with +, then select it.");
         var path = OriginalEnvironment.TokenFile(_profile);
-        if (!simulation && !File.Exists(path)) throw new InvalidOperationException($"No authorized YouTube token found for {channel?.Name ?? "this account"}. Use Credentials → Import YouTube token, or keep the original credentials folder beside the imported .env.");
+        if (!simulation && !File.Exists(path)) throw new InvalidOperationException($"No authorized YouTube token found for {channel?.Name ?? "this account"}. Keep the original credential folder beside your imported .env/config. Existing tokens need no separate import.");
         _profile.Save();
         _controller.Start(simulation ? null : new YouTubeClient(_http, OriginalEnvironment.TokenFiles(_profile), channel?.ChannelId), simulation);
         _channel.IsEnabled = false; _game.IsEnabled = false;
@@ -96,11 +96,10 @@ internal sealed partial class NativeWindow
     {
         ShowTool("credentials", "Credential & Paths Manager", () => Column(
             Label("Original environment & channel accounts"), Button("Import original .env", ImportEnvironmentAsync),
-            new TextBlock { Text = "Choose the original credentials folder once. Keep client_secret_*.json and each channel's *_token_N.json together. Ready tokens are used directly; daily quota errors rotate to the next token. Permission errors do not rotate.", TextWrapping = TextWrapping.Wrap },
-            Button("Choose shared credentials folder", ChooseCredentialsFolderAsync),
-            Button("Show selected folder and channel tokens", () => { WriteLog("Credentials: " + OriginalEnvironment.CredentialsDirectory(_profile) + "; " + OriginalEnvironment.TokenFiles(_profile).Length + " token(s) for the selected channel."); return Task.CompletedTask; }),
-            Button("Authorize a client secret in this folder", AuthorizeChannelAsync),
-            Button("Import YouTube token for selected channel", ImportTokenAsync),
+            new TextBlock { Text = "The credential (or credentials) folder beside your original .env/config is detected automatically. Existing channel tokens are ready to use and rotate on daily quota exhaustion.\nDetected folder: " + OriginalEnvironment.CredentialsDirectory(_profile) + "\nChannel tokens: " + OriginalEnvironment.TokenFiles(_profile).Length, TextWrapping = TextWrapping.Wrap },
+            new Expander { Header = "Repair or override account setup (optional)", Content = Column(
+                Button("Use a different credentials folder", ChooseCredentialsFolderAsync),
+                Button("Reconnect an expired/revoked account", AuthorizeChannelAsync)) },
             Button("API keys and voice credentials", () => { _settingsGroup.SelectedItem = "AI"; SelectTab(1); return Task.CompletedTask; }),
             Button("Models, Python and cache paths", PathsAsync)), 560, 500);
         return Task.CompletedTask;
@@ -343,6 +342,43 @@ internal sealed partial class NativeWindow
         if (_chat.ContainerFromIndex(0) is Control messageItem) messageItem.Focus(FocusState.Programmatic);
         else _chat.Focus(FocusState.Programmatic);
         if (FloatingWindow.IsEditing(this, _root)) throw new IOException("Chat message focus did not leave the game text editor.");
+        Program.Trace("Smoke: original game session and direct cache dispatch");
+        var sharedCache = Path.Combine(Program.DataRoot, "original cache fixture");
+        _profile.Set("voice_cache_path", sharedCache);
+        var gameData = _profile.Data.DeepClone().AsObject(); gameData.Remove("voice_cache_path");
+        gameData["game_name"] = "Shadow Of The  Colossus"; gameData["tts_mode"] = "typecast";
+        gameData["ai_mode"] = "groq"; gameData["hk_death_prompt"] = "Synthetic loaded game prompt";
+        gameData["hk_death_mode"] = "V"; gameData["hk_death_mute_ai"] = false;
+        gameData["force_cache_only"] = true; gameData["global_ai_mute"] = false;
+        var gameFile = Path.Combine(Program.DataRoot, "synthetic-game-session.json");
+        await File.WriteAllTextAsync(gameFile, gameData.ToJsonString());
+        OriginalEnvironment.ImportProfile(_profile, gameFile); LoadToolbar(); RefreshHotkeyEditors(); _profile.Save();
+        if (_game.Text != "Shadow Of The  Colossus" || _voices.SelectedItem?.ToString() != "typecast" || _profile.Text("voice_cache_path") != sharedCache || _profile.Text("hk_death_prompt") != "Synthetic loaded game prompt") throw new IOException("Game-session UI/cache settings did not restore together.");
+        var credentialFolder = Path.Combine(Program.DataRoot, "credential"); Directory.CreateDirectory(credentialFolder);
+        var tokenFile = Path.Combine(credentialFolder, "one_token_1.json"); await File.WriteAllTextAsync(tokenFile, "{}");
+        if (OriginalEnvironment.TokenFile(_profile) != tokenFile) throw new IOException("Original singular credential folder was not discovered automatically.");
+        var cacheFolder = Path.Combine(sharedCache, "typecast_cache", "Preview_Channel", "Shadow_Of_The__Colossus", "voice", "death"); Directory.CreateDirectory(cacheFolder);
+        var cacheFile = Path.Combine(cacheFolder, "death_original.wav"); await File.WriteAllBytesAsync(cacheFile, new byte[] { 1, 2, 3 });
+        await File.WriteAllTextAsync(Path.ChangeExtension(cacheFile, ".txt"), "Synthetic cached phrase");
+        string? dispatched = null;
+        Task ObserveCache(string path, CancellationToken token) { dispatched = path; return Task.CompletedTask; }
+        _controller.PlayCachedAudio -= PlayExistingClipAsync; _controller.PlayCachedAudio += ObserveCache;
+        try
+        {
+            await HandleHotkeyAsync("hk_death");
+            if (dispatched != cacheFile) throw new IOException("Force-cache hotkey did not dispatch the original clip directly.");
+            _profile.Set("force_cache_only", false); dispatched = null;
+            var firstTap = HandleHotkeyAsync("hk_death"); await Task.Delay(100);
+            var secondTap = HandleHotkeyAsync("hk_death"); await Task.WhenAll(firstTap, secondTap);
+            if (dispatched != cacheFile) throw new IOException("Double-tap did not select the original cached clip.");
+            dispatched = null; var pendingTap = HandleHotkeyAsync("hk_death"); await Task.Delay(100); Interrupt(); await pendingTap;
+            if (dispatched is not null) throw new IOException("Stop Audio did not cancel a pending hotkey.");
+            _profile.Set("force_cache_only", true);
+            await HandleHotkeyAsync("hk_toggle_cache_mode");
+            if (!_profile.Flag("force_cache_only") || _profile.Text("cache_playback_mode") != "repeat_all") throw new IOException("Cache-mode shortcut changed Force Cache instead of playback mode.");
+        }
+        finally { _controller.PlayCachedAudio -= ObserveCache; _controller.PlayCachedAudio += PlayExistingClipAsync; }
+        await File.WriteAllTextAsync(Path.Combine(Program.DataRoot, "game-cache-ready.txt"), "Game session UI restore, shared cache retention, singular credential discovery and original force-cache/double-tap dispatch and pending-tap cancellation passed. Media output mocked; no audio device/provider used.");
         Program.Trace("Smoke: opening keybind window");
         await HandleHotkeyAsync("hk_hotkeys_window"); await Task.Delay(500);
         var hotkeys = _toolWindows["hotkeys"];
