@@ -95,32 +95,40 @@ internal sealed partial class NativeWindow : Window
                 timer.Tick += async (_, _) =>
                 {
                     timer.Stop();
-                    await SmokeKeyboardAsync();
-                    await SmokeOriginalWorkflowsAsync();
-                    if (_root.ActualWidth > 0 && _root.ActualHeight > 0) File.WriteAllText(Path.Combine(Program.DataRoot, "smoke-ready.txt"), "Native WinUI window loaded and laid out.");
                     try
                     {
-                        var bitmap = new Microsoft.UI.Xaml.Media.Imaging.RenderTargetBitmap(); await bitmap.RenderAsync(_root);
-                        var buffer = await bitmap.GetPixelsAsync(); var bytes = new byte[buffer.Length]; using (var reader = Windows.Storage.Streams.DataReader.FromBuffer(buffer)) reader.ReadBytes(bytes);
-                        var folder = await StorageFolder.GetFolderFromPathAsync(Program.DataRoot); var file = await folder.CreateFileAsync("native-preview.png", CreationCollisionOption.ReplaceExisting);
-                        using var stream = await file.OpenAsync(FileAccessMode.ReadWrite);
-                        var encoder = await Windows.Graphics.Imaging.BitmapEncoder.CreateAsync(Windows.Graphics.Imaging.BitmapEncoder.PngEncoderId, stream);
-                        encoder.SetPixelData(Windows.Graphics.Imaging.BitmapPixelFormat.Bgra8, Windows.Graphics.Imaging.BitmapAlphaMode.Premultiplied, (uint)bitmap.PixelWidth, (uint)bitmap.PixelHeight, 96, 96, bytes); await encoder.FlushAsync();
+                        await SmokeKeyboardAsync();
+                        await SmokeOriginalWorkflowsAsync();
+                        if (_root.ActualWidth > 0 && _root.ActualHeight > 0) File.WriteAllText(Path.Combine(Program.DataRoot, "smoke-ready.txt"), "Native WinUI window loaded and laid out.");
+                        try
+                        {
+                            var bitmap = new Microsoft.UI.Xaml.Media.Imaging.RenderTargetBitmap(); await bitmap.RenderAsync(_root);
+                            var buffer = await bitmap.GetPixelsAsync(); var bytes = new byte[buffer.Length]; using (var reader = Windows.Storage.Streams.DataReader.FromBuffer(buffer)) reader.ReadBytes(bytes);
+                            var folder = await StorageFolder.GetFolderFromPathAsync(Program.DataRoot); var file = await folder.CreateFileAsync("native-preview.png", CreationCollisionOption.ReplaceExisting);
+                            using var stream = await file.OpenAsync(FileAccessMode.ReadWrite);
+                            var encoder = await Windows.Graphics.Imaging.BitmapEncoder.CreateAsync(Windows.Graphics.Imaging.BitmapEncoder.PngEncoderId, stream);
+                            encoder.SetPixelData(Windows.Graphics.Imaging.BitmapPixelFormat.Bgra8, Windows.Graphics.Imaging.BitmapAlphaMode.Premultiplied, (uint)bitmap.PixelWidth, (uint)bitmap.PixelHeight, 96, 96, bytes); await encoder.FlushAsync();
+                        }
+                        catch (Exception error) { File.WriteAllText(Path.Combine(Program.DataRoot, "screenshot-status.txt"), error.GetType().Name); }
+                        var selectedCache = Path.Combine(Program.DataRoot, "selected voice cache");
+                        _profile.Set("avatar_path", Path.Combine(Program.DataRoot, "unavailable-old-avatar.png")); _profile.Save();
+                        if (!await PathSettingsDialog.ShowAsync(this, _root.XamlRoot, _profile, selectedCache)) throw new IOException("Paths Save did not complete.");
+                        if (ResourcePaths.VoiceCache(new Profile(_profile.StoragePath), Program.DataRoot) != selectedCache) throw new IOException("Selected voice cache was not persisted.");
+                        await ReloadVoiceAsync();
+                        var settingsCache = Path.Combine(Program.DataRoot, "cache selected in general settings");
+                        _profile.Set("voice_cache_path", settingsCache);
+                        await SaveSettingsAsync();
+                        if (ResourcePaths.VoiceCache(new Profile(_profile.StoragePath), Program.DataRoot) != settingsCache) throw new IOException("General Settings Save lost its cache selection.");
+                        await PathSettingsDialog.ShowAsync(this, _root.XamlRoot, _profile);
+                        if (!File.Exists(Path.Combine(Program.DataRoot, "paths-ready.txt"))) throw new IOException("Native paths dialog did not lay out.");
+                        var videoWindow = new AvatarVideoWindow(); videoWindow.Activate(); videoWindow.Close();
+                        await CloseApplicationAsync();
                     }
-                    catch (Exception error) { File.WriteAllText(Path.Combine(Program.DataRoot, "screenshot-status.txt"), error.GetType().Name); }
-                    var selectedCache = Path.Combine(Program.DataRoot, "selected voice cache");
-                    _profile.Set("avatar_path", Path.Combine(Program.DataRoot, "unavailable-old-avatar.png")); _profile.Save();
-                    if (!await PathSettingsDialog.ShowAsync(this, _root.XamlRoot, _profile, selectedCache)) throw new IOException("Paths Save did not complete.");
-                    if (ResourcePaths.VoiceCache(new Profile(_profile.StoragePath), Program.DataRoot) != selectedCache) throw new IOException("Selected voice cache was not persisted.");
-                    await ReloadVoiceAsync();
-                    var settingsCache = Path.Combine(Program.DataRoot, "cache selected in general settings");
-                    _profile.Set("voice_cache_path", settingsCache);
-                    await SaveSettingsAsync();
-                    if (ResourcePaths.VoiceCache(new Profile(_profile.StoragePath), Program.DataRoot) != settingsCache) throw new IOException("General Settings Save lost its cache selection.");
-                    await PathSettingsDialog.ShowAsync(this, _root.XamlRoot, _profile);
-                    if (!File.Exists(Path.Combine(Program.DataRoot, "paths-ready.txt"))) throw new IOException("Native paths dialog did not lay out.");
-                    var videoWindow = new AvatarVideoWindow(); videoWindow.Activate(); videoWindow.Close();
-                    await CloseApplicationAsync();
+                    catch (Exception error)
+                    {
+                        File.WriteAllText(Path.Combine(Program.DataRoot, "smoke-failure.txt"), error.ToString());
+                        Environment.Exit(1);
+                    }
                 };
                 timer.Start();
             }

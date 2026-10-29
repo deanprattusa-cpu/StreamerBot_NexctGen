@@ -313,6 +313,7 @@ internal sealed partial class NativeWindow
 
     private async Task SmokeOriginalWorkflowsAsync()
     {
+        Program.Trace("Smoke: importing channels");
         var env = Path.Combine(Program.DataRoot, "synthetic.env");
         await File.WriteAllTextAsync(env, "CHANNEL_1_NAME=Preview Channel\nCHANNEL_1_ID=synthetic-one\nCHANNEL_1_TOKEN_PREFIX=one\nCHANNEL_3_NAME=Second Channel\nCHANNEL_3_ID=synthetic-three\nCHANNEL_3_TOKEN_PREFIX=three\n");
         OriginalEnvironment.Import(_profile, env); LoadToolbar();
@@ -324,7 +325,13 @@ internal sealed partial class NativeWindow
         if (!_menuToggles["review_mode"].IsChecked) throw new IOException("Imported menu toggle state did not refresh.");
         _profile.Set("review_mode", false); LoadToolbar();
         AddChat(new ChatMessage("synthetic-message", "Preview Viewer", "Hello! This is the restored native chat window.", "12:00:00"));
-        _chat.Focus(FocusState.Programmatic);
+        // Keyboard smoke leaves a text editor focused. Focus a laid-out message before
+        // invoking shortcuts, whose production contract deliberately ignores text editing.
+        await Task.Delay(100); _chat.UpdateLayout();
+        if (_chat.ContainerFromIndex(0) is Control messageItem) messageItem.Focus(FocusState.Programmatic);
+        else _chat.Focus(FocusState.Programmatic);
+        if (FloatingWindow.IsEditing(this, _root)) throw new IOException("Chat message focus did not leave the game text editor.");
+        Program.Trace("Smoke: opening keybind window");
         await HandleHotkeyAsync("hk_hotkeys_window"); await Task.Delay(500);
         var hotkeys = _toolWindows["hotkeys"];
         if (hotkeys.AppWindow.Presenter is not OverlappedPresenter { IsAlwaysOnTop: true } || _bindingEditors.Count != Catalog.SmartKeys.Concat(Catalog.SystemKeys).Distinct().Count()) throw new IOException("Detached keybind window did not load all bindings as topmost.");
@@ -332,6 +339,7 @@ internal sealed partial class NativeWindow
         await CaptureWindowAsync(hotkeys.Root, "hotkeys-preview.png"); hotkeys.Hide();
         _hotkeyTabs.SelectedItem = _hotkeyTabs.TabItems.OfType<TabViewItem>().Single(t => t.Header?.ToString() == "Reactions"); hotkeys.Show(); await Task.Delay(200);
         await CaptureWindowAsync(hotkeys.Root, "reactions-preview.png"); hotkeys.Hide();
+        Program.Trace("Smoke: opening shortcuts");
         _chat.Focus(FocusState.Programmatic); await HandleHotkeyAsync("hk_guide"); await Task.Delay(200);
         var guide = _toolWindows["shortcuts"];
         if (!guide.IsShown || guide.AppWindow.Presenter is not OverlappedPresenter { IsAlwaysOnTop: true }) throw new IOException("Keyboard Shortcuts did not open as a topmost window.");
@@ -339,9 +347,11 @@ internal sealed partial class NativeWindow
         await CaptureWindowAsync(guide.Root, "shortcuts-preview.png");
         guide.ToggleGhost(); guide.ToggleGhost(); ShowShortcutGuide(); if (guide.IsShown) throw new IOException("Keyboard Shortcuts did not toggle closed.");
         ShowShortcutGuide(); if (!guide.IsShown) throw new IOException("Keyboard Shortcuts did not reopen."); guide.Hide();
+        Program.Trace("Smoke: opening statistics");
         await StatsAsync(); await Task.Delay(150);
         if (!_toolWindows["stats"].IsShown) throw new IOException("Statistics overlay did not open.");
         await CaptureWindowAsync(_toolWindows["stats"].Root, "stats-preview.png"); await StatsAsync();
+        Program.Trace("Smoke: opening chat");
         ShowChatWindow(); await Task.Delay(300);
         var chat = _toolWindows["chat"];
         if (chat.AppWindow.Presenter is not OverlappedPresenter { IsAlwaysOnTop: true } || _chatList.Items.Count == 0) throw new IOException("Detached chat window did not load.");
@@ -350,6 +360,7 @@ internal sealed partial class NativeWindow
         await CaptureWindowAsync(chat.Root, "chat-preview.png"); ShowChatWindow(toggle: true);
         if (chat.IsShown) throw new IOException("Chat hotkey toggle did not hide the window.");
         ShowChatWindow(toggle: true); if (!chat.IsShown) throw new IOException("Chat hotkey toggle did not reopen the window."); chat.Hide();
+        Program.Trace("Smoke: opening review");
         var result = ReviewOnUiAsync(new ReviewRequest("Synthetic draft", "Preview Viewer: hello", "V+T"), _lifetime.Token);
         await Task.Delay(400);
         if (_reviewWindow is null || _reviewWindow.Window.AppWindow.Presenter is not OverlappedPresenter { IsAlwaysOnTop: true }) throw new IOException("Review did not open in a topmost native window.");
