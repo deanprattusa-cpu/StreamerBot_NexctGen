@@ -75,14 +75,17 @@ internal sealed partial class NativeWindow
         }
         var handle = Find(window.Root) ?? throw new IOException("Overlay drag handle did not load.");
         var location = handle.TransformToVisual(window.Root).TransformPoint(new Windows.Foundation.Point(handle.ActualWidth / 2, handle.ActualHeight / 2));
-        var scale = window.Root.XamlRoot.RasterizationScale; var position = window.AppWindow.Position;
-        return new Windows.Graphics.PointInt32(position.X + (int)(location.X * scale), position.Y + (int)(location.Y * scale));
+        var scale = window.Root.XamlRoot.RasterizationScale;
+        var point = new Windows.Graphics.PointInt32((int)(location.X * scale), (int)(location.Y * scale));
+        if (!ClientToScreen(WinRT.Interop.WindowNative.GetWindowHandle(window), ref point)) throw new IOException("Could not locate overlay input in screen coordinates.");
+        return point;
     }
     private static void MouseButton(bool down)
     {
         var input = new[] { new KeyboardInput { Type = 0, MouseFlags = down ? 2u : 4u } };
         if (SendInput(1, input, Marshal.SizeOf<KeyboardInput>()) != 1) throw new IOException("Mouse SendInput failed for overlay drag smoke.");
     }
+    [DllImport("user32.dll")] private static extern bool ClientToScreen(nint window, ref Windows.Graphics.PointInt32 point);
     [DllImport("user32.dll")] private static extern bool SetCursorPos(int x, int y);
     private static void TypeE()
     {

@@ -182,9 +182,10 @@ lip sync.
   full animated-avatar bridges (beyond the new SadTalker path).
 - Full AI-generated cache batch workflows; this build caches fixed phrases only.
 - Force-cache-only operation and visual gameplay capture/analysis are not ready.
-- RVC and Soprano did not have usable initialized loaders in the original checkout;
-  their native integrations remain incomplete. Whisper requires an additional
-  compatible whisper package; the original dependency installer does not supply it.
+- RVC now synthesizes a Windows SAPI source WAV and converts it with the selected
+  RVC model/index. Real RVC/GPU playback still requires testing on the Windows PC.
+  Soprano remains unavailable. Whisper requires an additional compatible whisper
+  package; the original dependency installer does not supply it.
 - Browser-automated Typecast/ElevenLabs Ghost queue completion is not confirmed by
   the worker. Some original voice adapters retain original limitations.
 
