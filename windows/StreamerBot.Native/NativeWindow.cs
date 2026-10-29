@@ -110,7 +110,7 @@ internal sealed partial class NativeWindow : Window
                     await PathSettingsDialog.ShowAsync(this, _root.XamlRoot, _profile);
                     if (!File.Exists(Path.Combine(Program.DataRoot, "paths-ready.txt"))) throw new IOException("Native paths dialog did not lay out.");
                     var videoWindow = new AvatarVideoWindow(); videoWindow.Activate(); videoWindow.Close();
-                    Close();
+                    await CloseApplicationAsync();
                 };
                 timer.Start();
             }
@@ -118,19 +118,29 @@ internal sealed partial class NativeWindow : Window
         AppWindow.Closing += async (_, args) =>
         {
             if (_closing) return;
-            args.Cancel = true; _closing = true;
-            _lifetime.Cancel(); Interrupt(); _reviewWindow?.Reject(); _hotkeys?.Dispose();
-            foreach (var window in _toolWindows.Values) window.Destroy();
-            await _controller.DisposeAsync(); await _voice.DisposeAsync();
-            _overlay?.Close(); _music?.Close(); _youtubeOverlay?.Close(); _avatarVideo?.Close();
-            _recording?.Dispose(); _audio.Dispose(); _http.Dispose();
-            try { SaveToolbar(); _profile.Save(); } catch { }
-            Close();
+            args.Cancel = true;
+            await CloseApplicationAsync();
         };
+    }
+    private async Task CloseApplicationAsync()
+    {
+        if (_closing) return;
+        _closing = true; Program.Trace("Shutdown: closing detached windows");
+        _lifetime.Cancel(); Interrupt(); _reviewWindow?.Reject(); _hotkeys?.Dispose();
+        foreach (var window in _toolWindows.Values) window.Destroy();
+        _toolWindows.Clear();
+        Program.Trace("Shutdown: stopping controller and worker");
+        await _controller.DisposeAsync(); await _voice.DisposeAsync();
+        _overlay?.Close(); _music?.Close(); _youtubeOverlay?.Close(); _avatarVideo?.Close();
+        _recording?.Dispose(); _audio.Dispose(); _http.Dispose();
+        try { SaveToolbar(); _profile.Save(); } catch { }
+        Program.Trace("Shutdown: closing main window");
+        Close();
     }
     private static StackPanel Row(params UIElement[] children) { var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 10, Margin = new Thickness(10) }; foreach (var item in children) row.Children.Add(item); return row; }
     private static StackPanel Column(params UIElement[] children) { var col = new StackPanel { Spacing = 12, Margin = new Thickness(18) }; foreach (var item in children) col.Children.Add(item); return col; }
-    private Button Button(string text, Func<Task> action) { var button = new Button { Content = text }; button.Click += (_, _) => Run(action); return button; }
+    private Button Button(string text, Func<Task> action) { var button = new Button { Content = text };
+        button.Background = text.Contains("START") || text.StartsWith("Send") || text.StartsWith("Save Changes") ? Color(0, 110, 0) : text.Contains("SIMULATE") ? Color(0, 80, 150) : text.Contains("STOP") ? Color(145, 0, 0) : text == "Improve" ? Color(85, 0, 170) : Color(50, 50, 50); button.Click += (_, _) => Run(action); return button; }
     private void Run(Func<Task> action) => _ = ExecuteAsync(action);
     private async Task ExecuteAsync(Func<Task> action) { try { await action(); } catch (OperationCanceledException) { WriteLog("Operation stopped."); } catch (Exception e) { WriteLog(e.Message); await NoticeAsync(e.Message); } }
     private void SelectTab(int index)
@@ -173,18 +183,20 @@ internal sealed partial class NativeWindow : Window
         }
         finally { _reviewWindow = null; _reviewGate.Release(); }
     }
+    private readonly List<Action> _menuRefresh = [];
+    private readonly Dictionary<string, ToggleMenuFlyoutItem> _menuToggles = [];
     private MenuBar BuildMenu()
     {
         var bar = new MenuBar();
         MenuBarItem Menu(string text) { var menu = new MenuBarItem { Title = text }; bar.Items.Add(menu); return menu; }
         void Command(MenuBarItem menu, string text, Func<Task> action) { var item = new MenuFlyoutItem { Text = text }; item.Click += (_, _) => Run(action); menu.Items.Add(item); }
         void Toggle(MenuBarItem menu, string text, string key, bool fallback = false)
-        { var item = new ToggleMenuFlyoutItem { Text = text, IsChecked = _profile.Flag(key, fallback) }; item.Click += (_, _) => { _profile.Set(key, item.IsChecked); _profile.Save(); }; menu.Items.Add(item); }
+        { var item = new ToggleMenuFlyoutItem { Text = text, IsChecked = _profile.Flag(key, fallback) }; item.Click += (_, _) => { _profile.Set(key, item.IsChecked); _profile.Save(); }; _menuToggles[key] = item; _menuRefresh.Add(() => item.IsChecked = _profile.Flag(key, fallback)); menu.Items.Add(item); }
         var file = Menu("File");
         Command(file, "Load Config…", ImportProfileAsync); Command(file, "Save Config", () => { SaveToolbar(); _profile.Save(); WriteLog("Profile saved."); return Task.CompletedTask; });
         Command(file, "Save Config As…", ExportProfileAsync); Command(file, "All settings…", () => { SelectTab(1); return Task.CompletedTask; }); Command(file, "Import .env…", ImportEnvironmentAsync); Command(file, "Import YouTube token…", ImportTokenAsync); Command(file, "Save session log…", ExportLogAsync);
         Command(file, "Open data folder", () => { Process.Start(new ProcessStartInfo(Program.DataRoot) { UseShellExecute = true }); return Task.CompletedTask; });
-        Command(file, "Exit", () => { Close(); return Task.CompletedTask; });
+        Command(file, "Exit", CloseApplicationAsync);
         var ai = Menu("AI Backend");
         foreach (var backend in new[] { "local", "groq", "gemini", "openrouter", "sambanova" }) { var selected = backend; Command(ai, "Use " + backend, () => { _profile.Set("ai_mode", selected); _profile.Save(); WriteLog("AI backend: " + selected); return Task.CompletedTask; }); }
         Command(ai, "Configure keys / models", () => { _settingsGroup.SelectedItem = "AI"; SelectTab(1); return Task.CompletedTask; });
@@ -276,7 +288,10 @@ internal sealed partial class NativeWindow : Window
     });
     private void AddChat(ChatMessage message)
     {
-        _messages.Add(message); _chat.Items.Add(new TextBlock { Text = message.Author + ": " + message.Text, TextWrapping = TextWrapping.Wrap });
+        _messages.Add(message);
+        var line = new TextBlock { TextWrapping = TextWrapping.Wrap };
+        line.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run { Text = message.Author + ": ", Foreground = message.Author == _profile.Text("channel_name") ? Color(0, 255, 0) : Color(0, 191, 255), FontWeight = Microsoft.UI.Text.FontWeights.Bold });
+        line.Inlines.Add(new Microsoft.UI.Xaml.Documents.Run { Text = message.Text }); _chat.Items.Add(line);
         if (_messages.Count > 1000) { _messages.RemoveAt(0); _chat.Items.RemoveAt(0); }
         _chat.ScrollIntoView(_chat.Items.Last()); RefreshChatList();
     }
@@ -291,7 +306,7 @@ internal sealed partial class NativeWindow : Window
             _channel.ItemsSource = channels; _channel.SelectedItem = channels.FirstOrDefault(c => c.Number == selected?.Number);
             if (_channel.SelectedItem is ChannelAccount channel) OriginalEnvironment.Select(_profile, channel);
             _voices.SelectedItem = _profile.Text("tts_mode", "edge"); _mainVolume.Value = _profile.Number("volume", 1); _mainOpacity.Value = _profile.Number("overlay_opacity", 0.85);
-            RenderSettings();
+            RenderSettings(); foreach (var refresh in _menuRefresh) refresh();
         }
         finally { _loadingToolbar = false; }
     }

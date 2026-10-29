@@ -25,7 +25,7 @@ internal sealed partial class NativeWindow
     private static TextBlock Label(string text) => new() { Text = text, Foreground = Color(0, 255, 0), VerticalAlignment = VerticalAlignment.Center };
     private FrameworkElement BuildOriginalToolbar()
     {
-        _game.Width = 150; _persona.Width = 180;
+        _channel.Width = 180; _game.Width = 140; _persona.Width = 165;
         _mainVolume.ValueChanged += (_, _) => { if (!_loadingToolbar) _profile.Set("volume", _mainVolume.Value); };
         _mainOpacity.ValueChanged += (_, _) =>
         {
@@ -33,12 +33,9 @@ internal sealed partial class NativeWindow
             _profile.Set("overlay_opacity", _mainOpacity.Value);
             if (_toolWindows.TryGetValue("chat", out var window)) window.SetOpacity(_mainOpacity.Value);
         };
-        var toolbar = Row(Label("Channel:"), _channel, Button("+", AddChannelAsync), Button("Credentials", CredentialsAsync), Label("Persona:"), _persona, Label("Game:"), _game,
-            Button("▶ START", () => StartSessionAsync(false)), Button("SIMULATE", () => StartSessionAsync(true)), Button("■ STOP", StopAsync));
+        var toolbar = Row(Label("Channel:"), _channel, Button("+", AddChannelAsync), Button("Credentials", CredentialsAsync), Label("Persona:"), _persona, Label("Game:"), _game);
         var controls = Row(Label("Vol:"), _mainVolume, Label("Opacity:"), _mainOpacity,
-            Button("Keybinds & Hotkeys", () => { SelectTab(2); return Task.CompletedTask; }),
-            Button("Chat List / Manual Reply", () => { ShowChatWindow(); return Task.CompletedTask; }),
-            Button("Settings", () => { SelectTab(1); return Task.CompletedTask; }));
+            Button("▶ START", () => StartSessionAsync(false)), Button("SIMULATE", () => StartSessionAsync(true)), Button("■ STOP", StopAsync));
         return new StackPanel { Children = { new ScrollViewer { Content = toolbar, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled }, controls } };
     }
     private FrameworkElement BuildOriginalMain()
@@ -152,21 +149,28 @@ internal sealed partial class NativeWindow
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); grid.Children.Add(grip.AtRow(4));
         return grid;
     }
-    private sealed record ChatRow(ChatMessage Message)
+    private ChatMessage? SelectedChat => (_chatList.SelectedItem as ListViewItem)?.Tag as ChatMessage;
+    private static ListViewItem ChatItem(ChatMessage message)
     {
-        public override string ToString() => $"{Message.PublishedAt}  {Message.Author}: {Message.Text}";
+        var grid = new Grid { ColumnSpacing = 8 };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(75) }); grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(110) }); grid.ColumnDefinitions.Add(new ColumnDefinition());
+        var time = DateTimeOffset.TryParse(message.PublishedAt, out var parsed) ? parsed.ToLocalTime().ToString("HH:mm:ss") : message.PublishedAt;
+        grid.Children.Add(new TextBlock { Text = time, FontSize = 11 });
+        var user = new TextBlock { Text = message.Author, TextWrapping = TextWrapping.Wrap, Foreground = Color(0, 191, 255) }; Grid.SetColumn(user, 1); grid.Children.Add(user);
+        var text = new TextBlock { Text = message.Text, TextWrapping = TextWrapping.Wrap }; Grid.SetColumn(text, 2); grid.Children.Add(text);
+        return new ListViewItem { Content = grid, Tag = message, HorizontalContentAlignment = HorizontalAlignment.Stretch };
     }
     private void RefreshChatList()
     {
-        var selected = (_chatList.SelectedItem as ChatRow)?.Message.Id;
+        var selected = SelectedChat?.Id;
         var names = new[] { "nightbot", "streamlabs", "streamelements", "system", "me", "streamerbot", _profile.Text("channel_name") };
-        var items = _messages.Where(m => _hideBots.IsChecked != true || !names.Contains(m.Author, StringComparer.OrdinalIgnoreCase)).Select(m => new ChatRow(m)).ToArray();
-        _chatList.ItemsSource = items; _chatList.SelectedItem = items.FirstOrDefault(i => i.Message.Id == selected);
+        var items = _messages.Where(m => _hideBots.IsChecked != true || !names.Contains(m.Author, StringComparer.OrdinalIgnoreCase)).Select(ChatItem).ToArray();
+        _chatList.ItemsSource = items; _chatList.SelectedItem = items.FirstOrDefault(i => (i.Tag as ChatMessage)?.Id == selected);
     }
     private async Task ReplyToSelectedAsync()
     {
-        if (_chatList.SelectedItem is not ChatRow row) throw new InvalidOperationException("Select a chat message first.");
-        await _controller.GenerateAsync($"Reply to {row.Message.Author}: {row.Message.Text}", token: _lifetime.Token);
+        if (SelectedChat is not ChatMessage message) throw new InvalidOperationException("Select a chat message first.");
+        await _controller.GenerateAsync($"Reply to {message.Author}: {message.Text}", token: _lifetime.Token);
     }
     private async Task SendChatDraftAsync()
     {
@@ -188,12 +192,12 @@ internal sealed partial class NativeWindow
     }
     private async Task EditSelectedChatAsync()
     {
-        if (_chatList.SelectedItem is not ChatRow row || !_toolWindows.TryGetValue("chat", out var window)) return;
-        var author = new TextBox { Header = "Viewer name", Text = row.Message.Author };
-        var message = new TextBox { Header = "Message", Text = row.Message.Text, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap };
+        if (SelectedChat is not ChatMessage selected || !_toolWindows.TryGetValue("chat", out var window)) return;
+        var author = new TextBox { Header = "Viewer name", Text = selected.Author };
+        var message = new TextBox { Header = "Message", Text = selected.Text, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap };
         if (await new ContentDialog { XamlRoot = window.Root.XamlRoot, Title = "Edit chat before reply", Content = Column(author, message), PrimaryButtonText = "Apply", CloseButtonText = "Cancel" }.ShowAsync() != ContentDialogResult.Primary) return;
-        var index = _messages.FindIndex(m => m.Id == row.Message.Id);
-        if (index >= 0) { _messages[index] = row.Message with { Author = author.Text, Text = message.Text }; RefreshChatList(); }
+        var index = _messages.FindIndex(m => m.Id == selected.Id);
+        if (index >= 0) { _messages[index] = selected with { Author = author.Text, Text = message.Text }; RefreshChatList(); }
     }
     private UIElement BuildOriginalHotkeys()
     {
@@ -276,6 +280,9 @@ internal sealed partial class NativeWindow
         _channel.SelectedIndex = 1;
         if (_profile.Text("channel_id") != "synthetic-three" || _profile.Number("channel_index") != 1) throw new IOException("Channel dropdown selection was not applied.");
         _channel.SelectedIndex = 0;
+        _profile.Set("review_mode", true); LoadToolbar();
+        if (!_menuToggles["review_mode"].IsChecked) throw new IOException("Imported menu toggle state did not refresh.");
+        _profile.Set("review_mode", false); LoadToolbar();
         AddChat(new ChatMessage("synthetic-message", "Preview Viewer", "Hello! This is the restored native chat window.", "12:00:00"));
         _chat.Focus(FocusState.Programmatic);
         await HandleHotkeyAsync("hk_hotkeys_window"); await Task.Delay(500);

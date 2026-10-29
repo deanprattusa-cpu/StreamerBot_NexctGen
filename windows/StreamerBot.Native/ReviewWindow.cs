@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
 using StreamerBot.Native.Core;
 
 namespace StreamerBot.Native;
@@ -17,16 +18,16 @@ internal sealed class ReviewWindow
         Editor = new TextBox { Text = request.Text, AcceptsReturn = true, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Stretch };
         var grid = new Grid { Margin = new Thickness(12), RowSpacing = 10 };
         grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); grid.RowDefinitions.Add(new RowDefinition()); grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto }); grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        var context = new TextBlock { Text = "Replying to: " + request.Context, TextWrapping = TextWrapping.Wrap, MaxHeight = 100 };
+        var context = new TextBlock { Text = "Replying to: " + request.Context, Foreground = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 0, 255, 255)), TextWrapping = TextWrapping.Wrap, MaxHeight = 100 };
         grid.Children.Add(context); Grid.SetRow(Editor, 1); grid.Children.Add(Editor);
         var status = new TextBlock { TextWrapping = TextWrapping.Wrap }; Grid.SetRow(status, 2); grid.Children.Add(status);
         var buttons = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
         foreach (var mode in new[] { "V+T", "V", "T" })
         {
-            var button = new Button { Content = "SEND (" + mode + ")" };
+            var button = new Button { Content = "SEND (" + mode + ")", Background = new SolidColorBrush(mode == "V+T" ? Windows.UI.Color.FromArgb(255, 0, 128, 0) : mode == "V" ? Windows.UI.Color.FromArgb(255, 0, 128, 255) : Windows.UI.Color.FromArgb(255, 184, 134, 11)) };
             button.Click += (_, _) => Submit(mode); buttons.Children.Add(button);
         }
-        var improve = new Button { Content = "REVISE" }; buttons.Children.Add(improve);
+        var improve = new Button { Content = "REVISE", Background = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 85, 0, 170)) }; buttons.Children.Add(improve);
         improve.Click += async (_, _) =>
         {
             improve.IsEnabled = false; status.Text = "Revising…";
@@ -35,7 +36,7 @@ internal sealed class ReviewWindow
             catch (Exception error) { if (!_finished) status.Text = error.Message; }
             finally { if (!_finished) improve.IsEnabled = true; }
         };
-        var reject = new Button { Content = "REJECT" }; reject.Click += (_, _) => Reject(); buttons.Children.Add(reject);
+        var reject = new Button { Content = "REJECT", Background = new SolidColorBrush(Windows.UI.Color.FromArgb(255, 180, 0, 0)) }; reject.Click += (_, _) => Reject(); buttons.Children.Add(reject);
         Grid.SetRow(buttons, 3); grid.Children.Add(new ScrollViewer { Content = buttons, HorizontalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollBarVisibility = ScrollBarVisibility.Disabled }.AtRow(3));
         Window = new FloatingWindow(profile, "AI Reply Review", "geo_review", grid, 650, 520, false);
         Window.Closed += (_, _) => { if (!_finished) { _finished = true; _closed.Cancel(); _completion.TrySetResult(null); } _closed.Dispose(); };
