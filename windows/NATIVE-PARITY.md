@@ -117,8 +117,8 @@ a separate action. Live statistics opens native viewer/like tiles, refreshes eve
 are displayed as `--`. These overlays support dragging, opacity and hide-all.
 
 This is a restoration of the reported workflows, not certification of 100% parity.
-Actual microphone capture and borderless window dragging still need interactive
-Windows verification. Some keybind General/AI settings remain in the all-settings editor.
+Actual microphone capture still needs device verification. Automated Windows
+mouse checks now cover borderless chat/shortcut dragging and chat resizing. Some keybind General/AI settings remain in the all-settings editor.
 See the remaining behavior list below before replacing the working original app.
 
 ## Voice and CUDA preparation
@@ -190,7 +190,7 @@ lip sync.
 
 - Advanced multi-tap and cache-shuffle hotkey behavior; unimplemented system
   actions report this explicitly when pressed. The editor retains their settings.
-- Exact original failover policy, account/quota rotation and subscriber/statistics
+- Exact original AI failover policy and subscriber/statistics
   greeting triggers.
 - Automated game-prompt/reaction rewriting, guide ghost modes, overlay ghost and
   opacity behavior, full music/YouTube controls, remote companion and generated

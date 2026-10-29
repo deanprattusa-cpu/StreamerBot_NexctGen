@@ -29,14 +29,14 @@ for first installations. Use a `vMAJOR.MINOR.PATCH` tag matching the app assembl
 installer and registry versions. Always wait for the exact source Windows run
 to pass and verify both asset hashes before publishing.
 
-The verified 0.3.1 assets are in
-[Windows artifact 12893316533](https://github.com/deanprattusa-cpu/StreamerBot_NexctGen/actions/runs/40864098782/artifacts/12893316533).
+The verified 0.3.2 assets are in
+[Windows artifact 12897655059](https://github.com/deanprattusa-cpu/StreamerBot_NexctGen/actions/runs/40872240495/artifacts/12897655059).
 Publication remains pending because this Coding task's GitHub delivery policy
 rejected release publishing. From a separately authenticated GitHub CLI, in the
 extracted artifact folder with the prepared release notes saved as `RELEASE-NOTES.md`:
 
 ```powershell
-gh release create v0.3.1 StreamerBot-Native-Setup.exe StreamerBot-Native-Update.exe SHA256SUMS.txt NATIVE-PARITY.md --repo deanprattusa-cpu/StreamerBot_NexctGen --target 76c963d873c84bae626b1ad5ec16e1da0ac6fc43 --title "StreamerBot Native 0.3.1" --notes-file RELEASE-NOTES.md
+gh release create v0.3.2 StreamerBot-Native-Setup.exe StreamerBot-Native-Update.exe SHA256SUMS.txt NATIVE-PARITY.md --repo deanprattusa-cpu/StreamerBot_NexctGen --target 91fae6fb6d012a0de3bae5f28151b59137048609 --title "StreamerBot Native 0.3.2" --notes-file RELEASE-NOTES.md
 ```
 
 This command has not published a release from this task. After publication,

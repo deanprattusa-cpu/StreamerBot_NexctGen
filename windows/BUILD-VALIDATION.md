@@ -1,8 +1,8 @@
-# Native Windows 0.3.1 — 2026-10-29
+# Native Windows 0.3.2 — 2026-10-29
 
-Source: `76c963d873c84bae626b1ad5ec16e1da0ac6fc43`.
-[Successful Windows run](https://github.com/deanprattusa-cpu/StreamerBot_NexctGen/actions/runs/40864098782).
-[Download verified package](https://github.com/deanprattusa-cpu/StreamerBot_NexctGen/actions/runs/40864098782/artifacts/12893316533).
+Source: `91fae6fb6d012a0de3bae5f28151b59137048609`.
+[Successful Windows run](https://github.com/deanprattusa-cpu/StreamerBot_NexctGen/actions/runs/40872240495).
+[Download verified package](https://github.com/deanprattusa-cpu/StreamerBot_NexctGen/actions/runs/40872240495/artifacts/12897655059).
 
 Extract the ZIP. Close the installed app completely and run
 `StreamerBot-Native-Update.exe`; no uninstall is needed. If the old hidden process
@@ -11,14 +11,14 @@ a first installation on Windows 11 x64. Both packages bundle .NET/WindowsAppSDK.
 
 | File | Bytes | SHA-256 |
 | --- | ---: | --- |
-| StreamerBot-Native-Setup.exe | 64,964,293 | `aa1796cc04e86245e9a97272bb3a13f3ca127b264f42ae86176cadcf58ff5c8f` |
-| StreamerBot-Native-Update.exe | 64,959,550 | `1a86723877d280a321fb291c25b5b610190aee3166767fd8258e2d04de5a324b` |
+| StreamerBot-Native-Setup.exe | 64,957,363 | `95c41699f559c29f8e0f2dd2e339f14fac78daf9afc93c0e4a5954e7a4729fc5` |
+| StreamerBot-Native-Update.exe | 64,946,760 | `da2159110594a45cc5a9e53ed9859654a58035bb141296cd16d991fbf1310fac` |
 
 ## Changes and verification
 
 Windows 2025, .NET SDK 10.0.403/runtime 10.0.14, Python 3.11 and NSIS 3.10:
 
-- 56 C# core checks and 19 Python checks passed, covering profile/channel/credential
+- 64 C# core checks and 20 Python checks passed, covering profile/channel/credential
   isolation, worker/renderer boundaries, selected caches, update versions/origins
   and SHA-256 rejection. Provider/models use synthetic fixtures.
 - Actual Windows SendInput: E typing while observed/suspended, observer disposal
@@ -30,7 +30,7 @@ Windows 2025, .NET SDK 10.0.403/runtime 10.0.14, Python 3.11 and NSIS 3.10:
 - Self-contained publish, native main/detached/review windows, channel selection,
   native layout/shutdown, installed-app interaction smoke.
 - Actual update EXE: reject fresh installations and a locked app; replace stale
-  payload, record version 0.3.1, retain profile/cache bytes and user-added files.
+  payload, record version 0.3.2, retain profile/cache bytes and user-added files.
 - Actual silent `/S /RESTART /APP_PID` handoff: wait for the running installed app,
   close cleanly, apply, reopen; retain selected cache and unknown settings.
 - Actual uninstall removes packaged files and retains user data.
