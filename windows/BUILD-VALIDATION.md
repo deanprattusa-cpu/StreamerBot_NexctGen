@@ -1,41 +1,29 @@
-# Verified continuation build — 2026-10-29
+# Native Windows UI repair — 2026-10-29
 
-Installer source revision: `c1348123148734ad8864aef788bd9985e2f6ffd6`.
+Source: `2c062a8dd5acd68588fcaca3c97bbf53fe3a4c7b`.
 
-- [Windows run 40845803387](https://github.com/deanprattusa-cpu/StreamerBot_NexctGen/actions/runs/40845803387): completed successfully.
-- [Download StreamerBot-Native-Windows-x64](https://github.com/deanprattusa-cpu/StreamerBot_NexctGen/actions/runs/40845803387/artifacts/12885555698).
-- Extract the artifact ZIP and run `StreamerBot-Native-Setup.exe` on Windows 11 x64.
-- Installer size: 64,910,614 bytes. Artifact ZIP: 65,019,573 bytes.
-- Installer SHA-256: `c8a87d0e81302e3a02f238ef4f606b1863f38d3c9b4529202e1e291095db0e93`.
+[Download installer artifact](https://github.com/deanprattusa-cpu/StreamerBot_NexctGen/actions/runs/40851228253/artifacts/12887218023). Extract the ZIP and run `StreamerBot-Native-Setup.exe` on Windows 11 x64.
 
-## Checks observed in this continuation
+Installer: 64,958,603 bytes. SHA-256: `63348dfcee4d3ea6d6fa498abcc186145d01b127eeea1fc14517beb4447ad368`.
 
-On Linux: 28 C# integration checks, 5 Python worker tests and 6 Python video/path
-tests passed with .NET SDK 10.0.403/runtime 10.0.14 and Python 3.14.4.
+## Restored in C# / .NET 10 / WinUI 3
 
-On the Windows CI runner: the same 28 + 5 + 6 checks passed, full self-contained
-Windows publish completed, the native window loaded and laid out, and the
-installer was built. Actual silent installation, installed-app launch and
-uninstall preserving a user-added file and synthetic profile passed.
+- Original `.env` numbered channels, selected account, original token discovery, and Google Desktop client authorization flow.
+- Light menu, black chat feed, green log, adjustable split and compact toolbar that wraps on narrow screens.
+- Separate topmost chat, review, keybind, blue shortcuts and statistics windows.
+- Compact reaction rows with override, prompt, output mode, Short, Mute AI and Sound settings.
+- Edited review output choices, reject/cancel, chat edit/reply/refresh and hold-to-talk controls.
 
-Downloaded artifact: installer checksum matched `SHA256SUMS.txt`. Published and
-installed app smoke folders both contain `smoke-ready.txt`, `paths-ready.txt`,
-`native-preview.png` and a synthetic profile. The installed-app screenshot was
-visually inspected. Published smoke stderr is empty. Paths markers confirm the
-dialog loaded all resource fields; this does not verify interactive file picking.
+Re-import the original `.env` through File → Import .env; import the original JSON config through File → Load Config. Both imports preserve the original files. Select the channel and use Credentials if its original token is not found.
 
-The original control-panel repair ZIP is unchanged. Its backup SHA-256, ZIP CRC
-and all seven payload hashes were verified using the repair script's newline
-normalization. This turn did not apply that repair on a user's Windows PC.
+## Verification
 
-## Windows PC setup still required
+[Windows run](https://github.com/deanprattusa-cpu/StreamerBot_NexctGen/actions/runs/40851228253) passed: 45 C# checks, 5 worker tests, 6 video/path tests, self-contained publish, native startup/layout/shutdown, channel selection, detached window toggle/reopen/topmost, review edit/mode/rejection, actual installation and installed-app smoke, uninstall with data retention. Local compile passed with zero warnings/errors. Artifact checksum verified. Native main, reaction editor, shortcut and chat screenshots visually inspected.
 
-Open Tools → Paths and select the SadTalker project containing `inference.py`,
-its GPU-enabled virtual-environment `Scripts/python.exe`, avatar, optional
-checkpoints, FFmpeg and video output. Enable avatar rendering. If it fails, use
-`renderer.log` in the selected video output folder to diagnose the actual error.
+An earlier Windows run found a shutdown timeout caused by hidden tool windows; cleanup was fixed and subsequent runs passed.
 
-No real NVIDIA GPU, SadTalker models, audio/microphone devices or live provider
-accounts were tested here. Synthetic inference confirms process/path/error
-handling. It does not establish real CUDA/model readiness or full original
-behavioral parity. See [NATIVE-PARITY.md](NATIVE-PARITY.md) for remaining migration.
+## Still incomplete
+
+This is not yet 100% original behavior. Automated game-specific reaction rewriting, advanced multi-tap/cache behavior, full music/YouTube controls, provider/account quota policy and remote companion work remain. Basic guide/statistics click-through is implemented; interactive click-through, dragging and opacity over games still need Windows testing. Real Google authorization, live counts, microphone/audio devices and GPU voices/SadTalker inference were not exercised with real accounts/hardware. Subscriber counts currently show `--`.
+
+The Python voice worker and selected SadTalker runtime remain isolated helpers allowed by the YAML; the main application is native C#/WinUI.

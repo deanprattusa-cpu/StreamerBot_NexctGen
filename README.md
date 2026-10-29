@@ -24,16 +24,13 @@ normalization. Profile-origin resolution and the application behavior are
 unchanged. The Windows installer workflow targets this task's assigned branch,
 `coderabbit/continue-from-yaml/43521e9c`, and also supports manual dispatch.
 
-Local continuation checks passed: 28 core integration checks, 5 worker tests and
-6 video/path tests. These use synthetic services and inference fixtures. A new
-Windows workflow must pass full publish, native UI, installer, installed-app and
-uninstall retention checks before an updated installer is verified. Read the
-exact commit's workflow result and the `StreamerBot-Native-Windows-x64` artifact;
-do not substitute the older installer linked in the historical YAML.
-
-The continuation build at `c1348123148734ad8864aef788bd9985e2f6ffd6` has now passed
-those Windows gates. See [windows/BUILD-VALIDATION.md](windows/BUILD-VALIDATION.md)
-for the exact run, download and checksum. Real GPU inference remains unverified.
+The native UI repair now imports original environment channels and restores
+separate chat, review, keybind, keyboard-shortcut and statistics windows. The latest
+verified build is `2c062a8dd5acd68588fcaca3c97bbf53fe3a4c7b`: 45 core checks,
+5 worker tests, 6 video/path tests, full Windows publish, native interaction smoke,
+actual installation and uninstall retention passed. See
+[windows/BUILD-VALIDATION.md](windows/BUILD-VALIDATION.md) for the current installer,
+checksum and remaining parity gaps. Do not substitute the older installer in the YAML.
 
 ## Packages
 
